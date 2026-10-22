@@ -436,7 +436,7 @@ function vGeral(){
   const lead=avg(P.map(p=>p.lead).filter(x=>x!=null&&x>=0)),gasto=P.reduce((a,p)=>a+p.total,0);
   const per={all:'todo o período','30':'últimos 30 dias','90':'últimos 90 dias','365':'últimos 12 meses'}[UI.period];
   const tile=(k,v,s,c='')=>`<div class="tile"><div class="k">${k}</div><div class="v ${c}">${v}</div><div class="s">${s}</div></div>`;
-  const bySup=M.forn.map(f=>({n:f.nome,v:f.peds.filter(inPeriod).reduce((a,p)=>a+p.total,0)})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v).slice(0,8);
+  const bySup=topSuppliers();
   const mx=Math.max(1,...bySup.map(x=>x.v));
   const mon=new Map();P.forEach(p=>{if(!p.emissao)return;const k=p.emissao.slice(0,7);mon.set(k,(mon.get(k)||0)+p.total)});
   const ms=[...mon.entries()].sort().slice(-12),mm=Math.max(1,...ms.map(x=>x[1]));
@@ -552,11 +552,93 @@ function vIntegracoes(){
     <p class="small muted">Não informe tokens, senhas ou chaves nesta página. Credenciais devem ser protegidas por um backend.</p>
    </section>
    <section class="panel"><h2>Power BI</h2>
-    <p>O Power BI poderá consumir a mesma API quando o endpoint estiver disponível e autorizado para esse uso.</p>
-    <ol><li>No Power BI Desktop, escolha <b>Obter dados → Web</b>.</li><li>Informe o endpoint de dados publicado pela API e configure a autenticação conforme o ambiente.</li><li>Para atualizar no Power BI Service, publique o relatório e configure as credenciais da fonte de dados.</li></ol>
-    <p class="small muted">Esta página HTML não publica uma API. A integração funcional depende de um backend e dos endpoints do sistema.</p>
+    <div class="banner"><span><b>Importante:</b> não conecte o endereço desta página HTML pelo conector <i>Web</i> do Power BI. Esse conector tenta adivinhar tabelas visuais e pode criar Column1, Column2. Baixe um CSV abaixo e importe pelo conector <b>Texto/CSV</b>.</span></div>
+    <p>Os CSVs são arquivos de dados tabulares e incluem cabeçalhos próprios na primeira linha.</p>
+    <h3>Resumos do painel</h3>
+    <div class="ds" style="margin:10px 0 18px">${POWERBI_SUMMARY_EXPORTS.map(([k,label,file,headers])=>`<div><div class="row sb"><b>${label}</b><button class="btn sm" data-a="export-csv" data-k="${k}" ${hasData()?'':'disabled'}>Baixar CSV</button></div><div class="small muted" style="margin-top:4px">Cabeçalhos: ${headers.join(', ')}</div></div>`).join('')}</div>
+    <div><div class="row sb"><b>Pedidos atrasados (tabela de atenção)</b><button class="btn sm" data-a="export-csv" data-k="resumo-atrasos" ${hasData()?'':'disabled'}>Baixar CSV · ${nf(M.peds.filter(p=>p.status==='atrasado').length)} linhas</button></div><div class="small muted" style="margin-top:4px">Cabeçalhos: NumeroPedido, Fornecedor, ValorEmAberto, AtrasoDias</div></div>
+    <h3>Dados detalhados</h3>
+    <div class="ds">${POWERBI_EXPORTS.map(([k,label,file,headers])=>`<div><div class="row sb"><b>${label}</b><button class="btn sm" data-a="export-csv" data-k="${k}" ${D[k].length?'':'disabled'}>Baixar CSV · ${nf(D[k].length)} linhas</button></div><div class="small muted" style="margin-top:4px">Cabeçalhos: ${headers.join(', ')}</div></div>`).join('')}</div>
+    <p class="small muted">No Power BI Desktop, use <b>Obter dados → Texto/CSV</b> e selecione o arquivo baixado. Não escolha as tabelas sugeridas ao conectar ao HTML do portal. Se já estiver no Power Query, a ação <b>Transformar → Usar a primeira linha como cabeçalhos</b> só ajuda quando a primeira linha contém os nomes corretos.</p>
+    <p class="small muted">${KEYS.some(k=>D[k].length)?'Nos arquivos detalhados, relacione as tabelas pelos campos NumeroSolicitacao e NumeroPedido.':''} Os arquivos exportados refletem os dados carregados nesta página; não há atualização automática no Power BI Service.</p>
+    <p class="small muted">A exportação preserva os identificadores como texto e datas em formato AAAA-MM-DD. Para atualização automática pela Web, será necessário publicar uma API e configurar o acesso no Power BI.</p>
    </section>
   </div>`;
+}
+const POWERBI_EXPORTS=[
+ ['sc','Solicitações','PortalCompras_Solicitacoes.csv',['NumeroSolicitacao','Item','CodigoProduto','Descricao','Quantidade','DataSolicitacao','Solicitante','CentroCusto']],
+ ['cot','Cotações','PortalCompras_Cotacoes.csv',['NumeroCotacao','NumeroSolicitacao','Fornecedor','CodigoProduto','PrecoUnitario','ValorTotal','DataCotacao','NumeroPedido']],
+ ['ped','Pedidos','PortalCompras_Pedidos.csv',['NumeroPedido','Item','NumeroSolicitacao','NumeroCotacao','Fornecedor','CodigoProduto','Descricao','Quantidade','PrecoUnitario','ValorTotal','DataPedido','PrevisaoEntrega','QuantidadeEntregue','Comprador']],
+ ['nf','Notas fiscais','PortalCompras_NotasFiscais.csv',['NumeroNotaFiscal','Serie','NumeroPedido','ItemPedido','Fornecedor','CodigoProduto','Quantidade','ValorTotal','DataEntrada']]
+];
+const POWERBI_SUMMARY_EXPORTS=[
+ ['resumo-fornecedores','Gasto por fornecedor','PortalCompras_Resumo_Fornecedores.csv',['Fornecedores','Gasto por fornecedor']],
+ ['resumo-indicadores','Indicadores do painel','PortalCompras_Indicadores.csv',['Pedidos em aberto','Valor pedidos em aberto','Atrasados','Solicitações sem pedido','Entregas no prazo (%)','Prazo médio de entrega (dias)','Gasto em pedidos']]
+];
+function topSuppliers(){
+  return M.forn.map(f=>({n:f.nome,v:f.peds.filter(inPeriod).reduce((a,p)=>a+p.total,0)}))
+    .filter(x=>x.v>0).sort((a,b)=>b.v-a.v).slice(0,8);
+}
+function dashboardIndicators(){
+  const P=M.peds.filter(inPeriod);
+  const open=M.peds.filter(p=>p.status!=='entregue');
+  const overdue=M.peds.filter(p=>p.status==='atrasado');
+  const scOpen=M.scs.filter(s=>!s.peds.length);
+  const delivered=P.filter(p=>p.noPrazo!==null);
+  const onTime=delivered.length?delivered.filter(p=>p.noPrazo).length/delivered.length*100:null;
+  const lead=avg(P.map(p=>p.lead).filter(x=>x!=null&&x>=0));
+  return [
+    open.length,
+    open.reduce((sum,p)=>sum+p.saldo,0),
+    overdue.length,
+    scOpen.length,
+    onTime,
+    lead,
+    P.reduce((sum,p)=>sum+p.total,0)
+  ];
+}
+function overdueRows(){
+  return M.peds.filter(p=>p.status==='atrasado')
+    .sort((a,b)=>b.atraso-a.atraso)
+    .map(p=>[dn('ped','num',p.num),p.fornecedor,p.saldo,p.atraso]);
+}
+function exportCsv(k){
+  if(k==='resumo-atrasos'){
+    if(!hasData()){toast('Carregue os pedidos antes de exportar os atrasos.');return}
+    downloadCsv('PortalCompras_Pedidos_Atrasados.csv',[
+      ['NumeroPedido','Fornecedor','ValorEmAberto','AtrasoDias'],
+      ...overdueRows()
+    ]);
+    return;
+  }
+  const summary=POWERBI_SUMMARY_EXPORTS.find(([key])=>key===k);
+  if(summary){
+    if(!hasData()){toast('Carregue os pedidos antes de exportar os resumos do painel.');return}
+    const rows=k==='resumo-fornecedores'?topSuppliers().map(x=>[x.n,x.v]):[dashboardIndicators()];
+    downloadCsv(summary[2],[summary[3],...rows]);
+    return;
+  }
+  const config=POWERBI_EXPORTS.find(([key])=>key===k);
+  if(!config)throw new Error('Tabela de exportação do Power BI não encontrada.');
+  const rows=D[k].map(r=>{
+    if(k==='sc')return [r.num,r.item,r.produto,r.desc,r.qtd,r.emissao,r.solicitante,r.cc];
+    if(k==='cot')return [r.num,r.scNum,r.fornecedor,r.produto,r.preco,r.total,r.emissao,r.pedNum];
+    if(k==='ped')return [r.num,r.item,r.scNum,r.cotNum,r.fornecedor,r.produto,r.desc,r.qtd,r.preco,r.total,r.emissao,r.previsao,r.qtdEnt,r.comprador];
+    return [r.doc,r.serie,r.pedNum,r.item,r.fornecedor,r.produto,r.qtd,r.total,r.emissao];
+  });
+  downloadCsv(config[2],[config[3],...rows]);
+}
+function downloadCsv(filename,rows){
+  const csv=rows.map(row=>row.map(value=>{
+    const cell=String(value==null?'':value);
+    return /[",\r\n]/.test(cell)?`"${cell.replace(/"/g,'""')}"`:cell;
+  }).join(',')).join('\r\n');
+  const blob=new Blob(['\uFEFF',csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement('a');
+  link.href=url;link.download=filename;link.hidden=true;
+  document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 const VIEWS={geral:vGeral,pedidos:vPedidos,fornecedores:vForn,dados:vDados,integracoes:vIntegracoes};
 const NAV=[['geral','Visão geral'],['pedidos','Acompanhamento'],['fornecedores','Fornecedores'],['dados','Dados'],['integracoes','API / Power BI']];
@@ -610,6 +692,7 @@ document.addEventListener('click',e=>{
    forn:()=>{UI.view='pedidos';UI.status='todos';UI.q=el.dataset.n;UI.limit=100;render();window.scrollTo(0,0)},
    more:()=>{UI.limit+=200;$('#pt').innerHTML=pedTable()},
    pick:()=>$('#f-'+el.dataset.k).click(),
+   'export-csv':()=>exportCsv(el.dataset.k),
    'save-api':()=>{
     const value=$('#api-url').value.trim();
     if(value){try{const url=new URL(value);if(!['http:','https:'].includes(url.protocol))throw new Error();integration.apiUrl=url.href.replace(/\/+$/,'')}catch(e){toast('Informe uma URL válida começando com http:// ou https://.');return}}
