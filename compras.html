@@ -73,8 +73,24 @@ input[type=search],input[type=text],input[type=number],input[type=date],select{b
 .chart-panel{overflow:hidden}
 .chart-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .chart-heading h2{margin-bottom:0}
-.chart-month{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;white-space:nowrap}
-.chart-month select{max-width:140px;padding:4px 7px;font-size:12px}
+.chart-controls{display:flex;align-items:center;justify-content:flex-end;gap:6px 10px;flex-wrap:wrap}
+.chart-month,.chart-range{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:12px;white-space:nowrap}
+.chart-month select,.chart-range input{max-width:140px;padding:4px 7px;font-size:12px}
+.chart-comparison{font-size:12px;color:var(--muted);margin:8px 0}
+.chart-comparison b{color:var(--ink)}
+.chart-comparison .up{color:var(--bad)}
+.chart-comparison .down{color:var(--ok)}
+.chart-detail-link{display:inline-block;margin-top:8px;color:var(--accent);font-size:12px;font-weight:600}
+.chart-mark{cursor:pointer}
+.chart-mark:hover{filter:brightness(1.12);stroke:var(--ink);stroke-width:2}
+.alert-list{display:grid;gap:8px}
+.alert-row{display:flex;align-items:center;gap:12px;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.alert-row .t{flex:1;min-width:0}
+.alert-row .title{font-weight:600}
+.alert-row .desc{font-size:12px;color:var(--muted)}
+.alert-count{min-width:26px;text-align:center;padding:2px 8px;border-radius:99px;background:var(--bad-soft);color:var(--bad);font-weight:700}
+.alert-count.warn{background:var(--warn-soft);color:var(--warn)}
+.print-only{display:none}
 .chart-presentation-open{overflow:hidden}
 .chart-presentation-open .hd{display:none}
 .chart-presentation-open #app{position:fixed;inset:0;z-index:70;width:100%;max-width:none;margin:0;padding:20px 24px 94px;overflow-y:auto;background:var(--bg)}
@@ -92,6 +108,9 @@ input[type=search],input[type=text],input[type=number],input[type=date],select{b
 .chart-presentation-controls .group{display:flex;align-items:center;gap:8px}
 .chart-presentation-controls .count{min-width:58px;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}
 @media(max-width:620px){
+  .chart-heading{flex-direction:column}
+  .chart-controls{justify-content:flex-start}
+  .chart-month select,.chart-range input{max-width:120px}
   .chart-presentation-open #app{padding:12px 12px 130px}
   .chart-presentation-open #app .chart-panel.presentation-current{min-height:calc(100vh - 154px);padding:16px}
   .chart-presentation-open #app .chart-panel .chart-svg{height:48vh}
@@ -99,6 +118,22 @@ input[type=search],input[type=text],input[type=number],input[type=date],select{b
   .chart-presentation-controls .title{flex:1 0 100%;text-align:center}
   .chart-presentation-controls .group{gap:5px}
   .chart-presentation-controls .btn{padding:6px 9px}
+}
+@media print{
+  body{background:#fff;color:#000;padding:0}
+  body::before,.hd,#toast,#modal,.chart-presentation-controls,.chart-heading .chart-controls,
+  #app>:not(.chart-grid),.chart-detail-link{display:none!important}
+  #app{max-width:none!important;padding:0!important}
+  #app .chart-grid{display:grid!important;grid-template-columns:1fr 1fr;gap:10px}
+  #app .chart-panel{display:block!important;break-inside:avoid;page-break-inside:avoid;border:1px solid #bbb;padding:10px}
+  #app .chart-panel h2{color:#333;font-size:10px}
+  #app .chart-panel>p{font-size:9px;margin:4px 0}
+  #app .chart-svg{min-height:0;height:auto;max-height:230px}
+  #app .chart-legend{font-size:8px;margin-top:2px}
+  .print-only{display:block!important}
+  #app>.print-only{display:block!important}
+  .chart-presentation-open #app{position:static!important;overflow:visible!important}
+  .chart-presentation-open #app .chart-panel{display:block!important;min-height:0!important}
 }
 .chart-svg{display:block;width:100%;height:auto;min-height:230px}
 .chart-legend{display:flex;gap:8px 14px;flex-wrap:wrap;margin-top:8px}
@@ -320,7 +355,7 @@ let D={sc:[],cot:[],ped:[],nf:[]};            // linhas normalizadas
 let BS={};
 let PAD={};                                    // estatística da normalização
 let M=null;                                   // modelo ligado (pedidos, SCs, fornecedores)
-const UI={view:'geral',period:'all',status:'todos',q:'',sort:'atraso',limit:100,category:'',buyer:'',chartMonths:{},confirm:false};
+const UI={view:'geral',period:'all',status:'todos',q:'',sort:'atraso',limit:100,category:'',buyer:'',chartFilters:{},chartCompare:{},confirm:false};
 const chartPresentation={active:false,index:0,paused:false,timer:0};
 const CHART_PRESENTATION_MS=10000;
 
@@ -718,43 +753,111 @@ function chartMonthOptions(){
   return [...months].sort();
 }
 function chartMonthSelect(id,title){
-  const selected=UI.chartMonths[id]||'';
-  return `<label class="chart-month">Mês <select data-a="chart-month" data-chart="${id}" aria-label="Filtrar ${title} por mês">
-    <option value=""${selected===''?' selected':''}>Todos</option>
-    ${chartMonthOptions().map(month=>`<option value="${month}"${selected===month?' selected':''}>${monthLabel(month)}</option>`).join('')}
-  </select></label>`;
+  const filter=UI.chartFilters[id]||{month:'',start:'',end:''};
+  return `<div class="chart-controls">
+   <label class="chart-month">Mês <select data-a="chart-month" data-chart="${id}" aria-label="Filtrar ${title} por mês">
+    <option value=""${filter.month===''?' selected':''}>Todos</option>
+    ${chartMonthOptions().map(month=>`<option value="${month}"${filter.month===month?' selected':''}>${monthLabel(month)}</option>`).join('')}
+   </select></label>
+   <label class="chart-range">De <input type="date" data-a="chart-date" data-edge="start" data-chart="${id}" aria-label="Data inicial de ${title}" value="${esc(filter.start)}"></label>
+   <label class="chart-range">Até <input type="date" data-a="chart-date" data-edge="end" data-chart="${id}" aria-label="Data final de ${title}" value="${esc(filter.end)}"></label>
+   <label class="chart-range"><input type="checkbox" data-a="chart-compare" data-chart="${id}"${UI.chartCompare[id]?' checked':''}> Comparar</label>
+  </div>`;
 }
 function chartPanel(id,title,description,chart){
-  return `<section class="panel chart-panel" data-chart-id="${id}"><div class="chart-heading"><h2>${title}</h2>${chartMonthSelect(id,title)}</div><p class="small muted">${description}</p>${chart}</section>`;
+  return `<section class="panel chart-panel" data-chart-id="${id}"><div class="chart-heading"><h2>${title}</h2>${chartMonthSelect(id,title)}</div><p class="small muted">${description}</p>${chartComparison(id)}${chart}<button class="chart-detail-link" data-a="chart-drill" data-chart="${id}">Ver pedidos deste gráfico</button></section>`;
+}
+function chartPeriod(id){
+  const filter=UI.chartFilters[id]||{month:'',start:'',end:''};
+  if(filter.start||filter.end)return {start:filter.start||'',end:filter.end||'',custom:true};
+  if(filter.month)return {start:`${filter.month}-01`,end:`${filter.month}-${pad(new Date(+filter.month.slice(0,4),+filter.month.slice(5,7),0).getDate())}`,month:filter.month};
+  return null;
+}
+function chartDateMatches(id,date){
+  const range=chartPeriod(id);
+  if(!range)return true;
+  if(!date)return false;
+  if(range.start&&date<range.start)return false;
+  if(range.end&&date>range.end)return false;
+  return true;
 }
 function chartPeds(id){
-  const month=UI.chartMonths[id]||'';
-  return M.peds.filter(p=>!month||(p.emissao&&p.emissao.slice(0,7)===month));
+  const range=chartPeriod(id);
+  if(range&&range.start&&range.end&&range.start>range.end)return [];
+  return M.peds.filter(p=>chartDateMatches(id,p.emissao));
+}
+function chartComparison(id){
+  if(!UI.chartCompare?.[id])return '';
+  const range=chartPeriod(id);
+  let currentStart,currentEnd,previousStart,previousEnd,label;
+  if(range?.custom){
+    if(!range.start||!range.end)return '<p class="chart-comparison">Comparação: informe as duas datas do intervalo.</p>';
+    if(range.start>range.end)return '<p class="chart-comparison">Comparação indisponível: a data inicial precisa ser anterior à final.</p>';
+    const days=diff(range.end,range.start)+1;
+    currentStart=range.start;currentEnd=range.end;
+    previousEnd=addDays(currentStart,-1);previousStart=addDays(previousEnd,-days+1);
+    label=`${fdate(currentStart)}–${fdate(currentEnd)} vs ${fdate(previousStart)}–${fdate(previousEnd)}`;
+  }else{
+    let month=range?.month;
+    if(!month){
+      const available=[...new Set(M.peds.map(p=>p.emissao&&p.emissao.slice(0,7)).filter(Boolean))].sort();
+      month=available[available.length-1];
+    }
+    if(!month)return '<p class="chart-comparison">Sem datas para comparar.</p>';
+    const [year,monthNumber]=month.split('-').map(Number);
+    const currentFirst=`${month}-01`;
+    currentStart=currentFirst;
+    currentEnd=`${month}-${pad(new Date(year,monthNumber,0).getDate())}`;
+    const previousFirst=`${addDays(currentFirst,-1).slice(0,7)}-01`;
+    previousStart=previousFirst;
+    previousEnd=addDays(currentFirst,-1);
+    label=`${monthLabel(month)} vs ${monthLabel(previousStart.slice(0,7))}`;
+  }
+  const inRange=(date,start,end)=>date&&date>=start&&date<=end;
+  const metric=(start,end)=>{
+    if(id==='flow')return {label:'Solicitações',value:M.scs.filter(s=>inRange(s.emissao,start,end)).length,format:nf};
+    if(id==='billing')return {label:'Faturamento',value:D.fat.filter(row=>inRange(row.emissao,start,end)).reduce((sum,row)=>sum+row.total,0),format:brlC};
+    const orders=M.peds.filter(p=>inRange(id==='approvals'?(p.approvalDate||p.emissao):p.emissao,start,end));
+    if(id==='status'||id==='monthly-status')return {label:'Pedidos',value:orders.length,format:nf};
+    if(id==='lead'||id==='cycle'||id==='approvals'){
+      const field=id==='lead'?'lead':id==='cycle'?'ciclo':'approvalDays';
+      const values=orders.map(p=>p[field]).filter(value=>value!=null&&value>=0);
+      return {label:id==='lead'?'Lead time médio':id==='cycle'?'Ciclo médio':'Aprovação média',value:values.length?values.reduce((sum,value)=>sum+value,0)/values.length:0,format:value=>`${nf(value,1)} dias`};
+    }
+    if(id==='taxes')return {label:'Impostos',value:orders.reduce((sum,p)=>sum+p.taxes,0),format:brlC};
+    return {label:'Valor comprado',value:orders.reduce((sum,p)=>sum+p.total,0),format:brlC};
+  };
+  const currentMetric=metric(currentStart,currentEnd),previousMetric=metric(previousStart,previousEnd);
+  const current=currentMetric.value,previous=previousMetric.value;
+  const change=previous?((current-previous)/previous*100):null;
+  const cls=change==null?'':change>0?'up':change<0?'down':'';
+  const changeText=change==null?(current?'novo período':'—'):`${change>0?'+':''}${nf(change,1)}%`;
+  return `<p class="chart-comparison">${currentMetric.label}: <b>${currentMetric.format(current)}</b> · período anterior: <b>${previousMetric.format(previous)}</b> · <b class="${cls}">${changeText}</b> <span class="muted">(${label})</span></p>`;
 }
 function chartMonthly(id){
   const months=new Map();
   for(const p of chartPeds(id)){if(!p.emissao)continue;const key=p.emissao.slice(0,7);months.set(key,(months.get(key)||0)+p.total)}
-  return [...months.entries()].sort().slice(-12).map(([label,value])=>({label:monthLabel(label),value}));
+  return [...months.entries()].sort().slice(-12).map(([key,value])=>({label:monthLabel(key),key,value}));
 }
-function chartSvgColumns(rows,color='var(--accent)',format=brl){
+function chartSvgColumns(rows,color='var(--accent)',format=brl,chartId=''){
   if(!rows.length)return chartEmpty('Sem pedidos com data no período.');
   const max=Math.max(1,...rows.map(r=>r.value)),left=48,bottom=232,plot=550,step=plot/rows.length,w=Math.min(34,step*.58);
-  const bars=rows.map((r,i)=>{const h=r.value/max*170,x=left+i*step+(step-w)/2,y=bottom-h;return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${color}"><title>${esc(r.label)}: ${format(r.value)}</title></rect><text x="${x+w/2}" y="251" text-anchor="middle" fill="var(--muted)" font-size="11">${esc(r.label)}</text>`}).join('');
+  const bars=rows.map((r,i)=>{const h=r.value/max*170,x=left+i*step+(step-w)/2,y=bottom-h;return `<rect class="chart-mark" data-a="chart-mark" data-chart="${chartId}" data-drill="${esc(r.drill??r.key??r.label)}" x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${color}"><title>${esc(r.label)}: ${format(r.value)} · clique para detalhar</title></rect><text x="${x+w/2}" y="251" text-anchor="middle" fill="var(--muted)" font-size="11">${esc(r.label)}</text>`}).join('');
   return svgChart(`<path d="M48 232H602" stroke="var(--line)"/>${bars}`);
 }
-function chartSvgLine(rows,color='var(--accent)',area=false){
+function chartSvgLine(rows,color='var(--accent)',area=false,chartId=''){
   if(!rows.length)return chartEmpty('Sem pedidos com data no período.');
   const max=Math.max(1,...rows.map(r=>r.value)),min=Math.min(0,...rows.map(r=>r.value)),span=max-min||1,left=54,step=540/Math.max(1,rows.length-1);
   const pts=rows.map((r,i)=>`${left+i*step},${218-(r.value-min)/span*170}`).join(' ');
-  const marks=rows.map((r,i)=>`<circle cx="${left+i*step}" cy="${218-(r.value-min)/span*170}" r="4" fill="${color}"><title>${esc(r.label)}: ${brl(r.value)}</title></circle><text x="${left+i*step}" y="248" text-anchor="middle" fill="var(--muted)" font-size="11">${esc(r.label)}</text>`).join('');
+  const marks=rows.map((r,i)=>`<circle class="chart-mark" data-a="chart-mark" data-chart="${chartId}" data-drill="${esc(r.drill??r.key??r.label)}" cx="${left+i*step}" cy="${218-(r.value-min)/span*170}" r="5" fill="${color}"><title>${esc(r.label)}: ${brl(r.value)} · clique para detalhar</title></circle><text x="${left+i*step}" y="248" text-anchor="middle" fill="var(--muted)" font-size="11">${esc(r.label)}</text>`).join('');
   return svgChart(`${area?`<polygon points="${left},218 ${pts} ${left+(rows.length-1)*step},218" fill="${color}" opacity=".16"/>`:''}<path d="M54 218H602" stroke="var(--line)"/><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>${marks}`);
 }
-function chartSvgHorizontal(rows,color='var(--accent)',format=brlC){
+function chartSvgHorizontal(rows,color='var(--accent)',format=brlC,chartId=''){
   if(!rows.length)return chartEmpty('Sem dados para comparar.');
   const max=Math.max(1,...rows.map(r=>r.value)),top=10,gap=Math.min(34,220/rows.length);
-  return svgChart(rows.slice(0,7).map((r,i)=>{const y=top+i*gap,w=r.value/max*390;return `<text x="8" y="${y+17}" fill="var(--ink)" font-size="12">${esc(r.label.slice(0,24))}</text><rect x="205" y="${y+3}" width="${w}" height="17" rx="3" fill="${color}"><title>${esc(r.label)}: ${format(r.value)}</title></rect><text x="${210+w}" y="${y+17}" fill="var(--muted)" font-size="11">${format(r.value)}</text>`}).join(''));
+  return svgChart(rows.slice(0,7).map((r,i)=>{const y=top+i*gap,w=r.value/max*390;return `<text x="8" y="${y+17}" fill="var(--ink)" font-size="12">${esc(r.label.slice(0,24))}</text><rect class="chart-mark" data-a="chart-mark" data-chart="${chartId}" data-drill="${esc(r.drill??r.key??r.label)}" x="205" y="${y+3}" width="${w}" height="17" rx="3" fill="${color}"><title>${esc(r.label)}: ${format(r.value)} · clique para detalhar</title></rect><text x="${210+w}" y="${y+17}" fill="var(--muted)" font-size="11">${format(r.value)}</text>`}).join(''));
 }
-function chartSvgPie(rows,donut=false){
+function chartSvgPie(rows,donut=false,chartId=''){
   const data=rows.filter(r=>r.value>0),total=data.reduce((sum,r)=>sum+r.value,0);
   if(!total)return chartEmpty('Sem dados para distribuir.');
   let angle=-Math.PI/2;
@@ -763,56 +866,56 @@ function chartSvgPie(rows,donut=false){
     const x1=170+115*Math.cos(start),y1=135+115*Math.sin(start),x2=170+115*Math.cos(end),y2=135+115*Math.sin(end);
     const path=`M170 135 L${x1} ${y1} A115 115 0 ${sweep>Math.PI?1:0} 1 ${x2} ${y2} Z`;
     const color=CHART_COLORS[i%CHART_COLORS.length];
-    return `<path d="${path}" fill="${color}" stroke="var(--surface)" stroke-width="2"><title>${esc(r.label)}: ${nf(r.value/total*100,1)}%</title></path>${donut?'':`<text x="${170+74*Math.cos(start+sweep/2)}" y="${139+74*Math.sin(start+sweep/2)}" fill="#fff" text-anchor="middle" font-size="11">${nf(r.value/total*100)}%</text>`}`;
+    return `<path class="chart-mark" data-a="chart-mark" data-chart="${chartId}" data-drill="${esc(r.drill??r.key??r.label)}" d="${path}" fill="${color}" stroke="var(--surface)" stroke-width="2"><title>${esc(r.label)}: ${nf(r.value/total*100,1)}% · clique para detalhar</title></path>${donut?'':`<text x="${170+74*Math.cos(start+sweep/2)}" y="${139+74*Math.sin(start+sweep/2)}" fill="#fff" text-anchor="middle" font-size="11">${nf(r.value/total*100)}%</text>`}`;
   }).join('');
   const ring=donut?'<circle cx="170" cy="135" r="62" fill="var(--surface)"/>':'';
   const legend=data.map((r,i)=>`<span><i style="background:${CHART_COLORS[i%CHART_COLORS.length]}"></i>${esc(r.label)} · ${nf(r.value)}</span>`).join('');
   return `${svgChart(`${slices}${ring}${donut?`<text x="170" y="131" text-anchor="middle" fill="var(--ink)" font-size="18" font-weight="600">${brlC(total)}</text><text x="170" y="151" text-anchor="middle" fill="var(--muted)" font-size="11">total</text>`:''}`)}<div class="chart-legend">${legend}</div>`;
 }
-function chartSvgStacked(rows,series){
+function chartSvgStacked(rows,series,chartId=''){
   if(!rows.length)return chartEmpty('Sem pedidos com data no período.');
   const max=Math.max(1,...rows.map(r=>series.reduce((sum,s)=>sum+r[s.key],0))),step=550/rows.length,w=Math.min(36,step*.6);
-  const bars=rows.map((r,i)=>{let y=232;const x=48+i*step+(step-w)/2;const parts=series.map(s=>{const h=r[s.key]/max*180;y-=h;return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${s.color}"><title>${esc(r.label)} · ${s.label}: ${r[s.key]}</title></rect>`}).join('');return `${parts}<text x="${x+w/2}" y="250" text-anchor="middle" fill="var(--muted)" font-size="11">${esc(r.label)}</text>`}).join('');
+  const bars=rows.map((r,i)=>{let y=232;const x=48+i*step+(step-w)/2;const parts=series.map(s=>{const h=r[s.key]/max*180;y-=h;return `<rect class="chart-mark" data-a="chart-mark" data-chart="${chartId}" data-drill="${esc(r.key??r.label)}" data-status="${s.key}" x="${x}" y="${y}" width="${w}" height="${h}" fill="${s.color}"><title>${esc(r.label)} · ${s.label}: ${r[s.key]} · clique para detalhar</title></rect>`}).join('');return `${parts}<text x="${x+w/2}" y="250" text-anchor="middle" fill="var(--muted)" font-size="11">${esc(r.label)}</text>`}).join('');
   return `${svgChart(`<path d="M48 232H602" stroke="var(--line)"/>${bars}`)}<div class="chart-legend">${series.map(s=>`<span><i style="background:${s.color}"></i>${s.label}</span>`).join('')}</div>`;
 }
-function chartSvgFunnel(rows){
+function chartSvgFunnel(rows,chartId='flow'){
   if(!rows.length||!rows[0].value)return chartEmpty('Carregue SC, cotações e pedidos para visualizar o fluxo.');
   const max=rows[0].value;
-  return svgChart(rows.map((r,i)=>{const y=12+i*62,w=500*r.value/max,x=70+(500-w)/2,color=CHART_COLORS[i%CHART_COLORS.length];return `<path d="M${x} ${y}H${x+w}L${x+w-15} ${y+48}H${x+15}Z" fill="${color}" opacity=".9"><title>${esc(r.label)}: ${r.value}</title></path><text x="320" y="${y+22}" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">${esc(r.label)} · ${nf(r.value)}</text><text x="320" y="${y+40}" text-anchor="middle" fill="#fff" font-size="11">${nf(r.value/max*100)}% da primeira etapa</text>`}).join(''));
+  return svgChart(rows.map((r,i)=>{const y=12+i*62,w=500*r.value/max,x=70+(500-w)/2,color=CHART_COLORS[i%CHART_COLORS.length];return `<path class="chart-mark" data-a="chart-mark" data-chart="${chartId}" data-drill="${esc(r.key??r.label)}" d="M${x} ${y}H${x+w}L${x+w-15} ${y+48}H${x+15}Z" fill="${color}" opacity=".9"><title>${esc(r.label)}: ${r.value} · clique para detalhar</title></path><text x="320" y="${y+22}" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">${esc(r.label)} · ${nf(r.value)}</text><text x="320" y="${y+40}" text-anchor="middle" fill="#fff" font-size="11">${nf(r.value/max*100)}% da primeira etapa</text>`}).join(''));
 }
-function chartSvgScatter(rows){
+function chartSvgScatter(rows,chartId='cycle'){
   const data=rows.filter(r=>r.x!=null&&r.y>0);
   if(!data.length)return chartEmpty('São necessários pedidos com valor e ciclo SC→pedido.');
   const mx=Math.max(1,...data.map(r=>r.x)),my=Math.max(1,...data.map(r=>r.y));
-  const marks=data.map(r=>{const x=56+r.x/mx*520,y=220-r.y/my*185;return `<circle cx="${x}" cy="${y}" r="5" fill="${CHART_COLORS[0]}" opacity=".7"><title>${esc(r.label)} · ciclo ${r.x} dias · ${brl(r.y)}</title></circle>`}).join('');
+  const marks=data.map(r=>{const x=56+r.x/mx*520,y=220-r.y/my*185;return `<circle class="chart-mark" data-a="chart-mark" data-chart="${chartId}" data-drill="${esc(r.drill??r.label)}" cx="${x}" cy="${y}" r="5" fill="${CHART_COLORS[0]}" opacity=".7"><title>${esc(r.label)} · ciclo ${r.x} dias · ${brl(r.y)} · clique para detalhar</title></circle>`}).join('');
   return svgChart(`<path d="M56 220H600M56 25V220" fill="none" stroke="var(--line)"/><text x="320" y="258" text-anchor="middle" fill="var(--muted)" font-size="12">Ciclo solicitação → pedido (dias)</text><text transform="translate(16 128) rotate(-90)" text-anchor="middle" fill="var(--muted)" font-size="12">Valor do pedido</text>${marks}`);
 }
-function chartSvgHeatmap(rows){
+function chartSvgHeatmap(rows,chartId='heatmap'){
   if(!rows.length)return chartEmpty('Sem dados com categoria e comprador.');
   const buyers=[...new Set(rows.map(r=>r.buyer))].slice(0,6),cats=[...new Set(rows.map(r=>r.category))].slice(0,7),max=Math.max(1,...rows.map(r=>r.value));
-  const cells=cats.map((cat,ci)=>`<text x="145" y="${52+ci*28}" text-anchor="end" fill="var(--ink)" font-size="11">${esc(cat.slice(0,18))}</text>${buyers.map((buyer,bi)=>{const val=rows.find(r=>r.category===cat&&r.buyer===buyer)?.value||0;const x=160+bi*68,y=34+ci*28;return `<rect x="${x}" y="${y}" width="62" height="24" rx="3" fill="${CHART_COLORS[0]}" opacity="${val?(.15+val/max*.8):.05}"><title>${esc(cat)} · ${esc(buyer)}: ${brl(val)}</title></rect>${val?`<text x="${x+31}" y="${y+16}" text-anchor="middle" fill="var(--ink)" font-size="9">${brlC(val)}</text>`:''}`}).join('')}`).join('');
+  const cells=cats.map((cat,ci)=>`<text x="145" y="${52+ci*28}" text-anchor="end" fill="var(--ink)" font-size="11">${esc(cat.slice(0,18))}</text>${buyers.map((buyer,bi)=>{const val=rows.find(r=>r.category===cat&&r.buyer===buyer)?.value||0;const x=160+bi*68,y=34+ci*28;return `<rect class="chart-mark" data-a="chart-mark" data-chart="${chartId}" data-category="${esc(cat)}" data-buyer="${esc(buyer)}" x="${x}" y="${y}" width="62" height="24" rx="3" fill="${CHART_COLORS[0]}" opacity="${val?(.15+val/max*.8):.05}"><title>${esc(cat)} · ${esc(buyer)}: ${brl(val)} · clique para detalhar</title></rect>${val?`<text x="${x+31}" y="${y+16}" text-anchor="middle" fill="var(--ink)" font-size="9">${brlC(val)}</text>`:''}`}).join('')}`).join('');
   const labels=buyers.map((b,i)=>`<text transform="translate(${191+i*68} 24) rotate(-35)" text-anchor="start" fill="var(--muted)" font-size="10">${esc(b.slice(0,12))}</text>`).join('');
   return svgChart(`${labels}${cells}`);
 }
-function chartSvgHistogram(values){
+function chartSvgHistogram(values,chartId='lead'){
   if(!values.length)return chartEmpty('Não há lead time de entrega calculável.');
-  const max=Math.max(...values),bins=Array.from({length:6},(_,i)=>({label:`${Math.floor(max*i/6)}–${Math.ceil(max*(i+1)/6)} d`,value:0}));
+  const max=Math.max(...values),bins=Array.from({length:6},(_,i)=>({label:`${Math.floor(max*i/6)}–${Math.ceil(max*(i+1)/6)} d`,value:0,drill:`${i}`}));
   values.forEach(v=>{const i=Math.min(5,Math.floor(v/(max||1)*6));bins[i].value++});
-  return chartSvgColumns(bins,'#8064a2',nf);
+  return chartSvgColumns(bins,'#8064a2',nf,chartId);
 }
-function chartSvgRadar(rows){
+function chartSvgRadar(rows,chartId='radar'){
   if(!rows.length)return chartEmpty('Sem fornecedores com entregas avaliáveis.');
   const axes=['No prazo','Recebido','Gasto relativo'],cx=300,cy=140,rad=90;
   const grid=[.33,.66,1].map(scale=>`<polygon points="${axes.map((_,i)=>{const a=-Math.PI/2+i*2*Math.PI/axes.length;return `${cx+rad*scale*Math.cos(a)},${cy+rad*scale*Math.sin(a)}`}).join(' ')}" fill="none" stroke="var(--line)"/>`).join('');
   const axis=axes.map((label,i)=>{const a=-Math.PI/2+i*2*Math.PI/axes.length;return `<line x1="${cx}" y1="${cy}" x2="${cx+rad*Math.cos(a)}" y2="${cy+rad*Math.sin(a)}" stroke="var(--line)"/><text x="${cx+115*Math.cos(a)}" y="${cy+115*Math.sin(a)}" text-anchor="middle" fill="var(--muted)" font-size="11">${label}</text>`}).join('');
-  const plots=rows.map((r,ri)=>`<polygon points="${r.values.map((v,i)=>{const a=-Math.PI/2+i*2*Math.PI/axes.length;return `${cx+rad*v*Math.cos(a)},${cy+rad*v*Math.sin(a)}`}).join(' ')}" fill="${CHART_COLORS[ri%CHART_COLORS.length]}" fill-opacity=".12" stroke="${CHART_COLORS[ri%CHART_COLORS.length]}" stroke-width="2"><title>${esc(r.name)}</title></polygon>`).join('');
+  const plots=rows.map((r,ri)=>`<polygon class="chart-mark" data-a="chart-mark" data-chart="${chartId}" data-drill="${esc(r.name)}" points="${r.values.map((v,i)=>{const a=-Math.PI/2+i*2*Math.PI/axes.length;return `${cx+rad*v*Math.cos(a)},${cy+rad*v*Math.sin(a)}`}).join(' ')}" fill="${CHART_COLORS[ri%CHART_COLORS.length]}" fill-opacity=".12" stroke="${CHART_COLORS[ri%CHART_COLORS.length]}" stroke-width="2"><title>${esc(r.name)} · clique para detalhar</title></polygon>`).join('');
   const legend=rows.map((r,i)=>`<span><i style="background:${CHART_COLORS[i%CHART_COLORS.length]}"></i>${esc(r.name)}</span>`).join('');
   return `${svgChart(`${grid}${axis}${plots}`)}<div class="chart-legend">${legend}</div>`;
 }
-function chartSvgCombo(rows){
+function chartSvgCombo(rows,chartId='billing'){
   if(!rows.length)return chartEmpty('Sem compras ou faturamento no período.');
   const max=Math.max(1,...rows.flatMap(r=>[r.purchase,r.billing])),step=550/rows.length,w=Math.min(18,step*.32);
-  const bars=rows.map((r,i)=>{const x=48+i*step+step/2,ph=r.purchase/max*170,bh=r.billing/max*170;return `<rect x="${x-w-1}" y="${220-ph}" width="${w}" height="${ph}" fill="#0f6b5c"><title>${esc(r.label)} compras: ${brl(r.purchase)}</title></rect><rect x="${x+1}" y="${220-bh}" width="${w}" height="${bh}" fill="#4d91c6"><title>${esc(r.label)} faturamento: ${brl(r.billing)}</title></rect><text x="${x}" y="245" text-anchor="middle" fill="var(--muted)" font-size="11">${esc(r.label)}</text>`}).join('');
+  const bars=rows.map((r,i)=>{const x=48+i*step+step/2,ph=r.purchase/max*170,bh=r.billing/max*170;return `<rect class="chart-mark" data-a="chart-mark" data-chart="${chartId}" data-drill="${esc(r.key??r.label)}" x="${x-w-1}" y="${220-ph}" width="${w}" height="${ph}" fill="#0f6b5c"><title>${esc(r.label)} compras: ${brl(r.purchase)} · clique para detalhar</title></rect><rect class="chart-mark" data-a="chart-mark" data-chart="${chartId}" data-drill="${esc(r.key??r.label)}" x="${x+1}" y="${220-bh}" width="${w}" height="${bh}" fill="#4d91c6"><title>${esc(r.label)} faturamento: ${brl(r.billing)} · clique para detalhar</title></rect><text x="${x}" y="245" text-anchor="middle" fill="var(--muted)" font-size="11">${esc(r.label)}</text>`}).join('');
   return `${svgChart(`<path d="M48 220H602" stroke="var(--line)"/>${bars}`)}<div class="chart-legend"><span><i style="background:#0f6b5c"></i>Compras</span><span><i style="background:#4d91c6"></i>Faturamento</span></div>`;
 }
 function vGraficos(){
@@ -823,14 +926,14 @@ function vGraficos(){
   const cumulativeMonths=months('cumulative').map(row=>{cumulative+=row.value;return {...row,value:cumulative}});
   const supplierRows=id=>M.forn.map(f=>({label:f.nome,value:f.peds.filter(p=>peds(id).includes(p)).reduce((sum,p)=>sum+p.total,0)}))
     .filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
-  const statusRows=['atrasado','aberto','parcial','entregue'].map(s=>({label:ST[s],value:peds('status').filter(p=>p.status===s).length}));
+  const statusRows=['atrasado','aberto','parcial','entregue'].map(s=>({label:ST[s],key:s,value:peds('status').filter(p=>p.status===s).length}));
   const selectedStatusPeds=peds('monthly-status');
   const monthlyStatus=[...new Set(selectedStatusPeds.map(p=>p.emissao&&p.emissao.slice(0,7)).filter(Boolean))].sort().slice(-8).map(key=>{
     const group=selectedStatusPeds.filter(p=>p.emissao&&p.emissao.slice(0,7)===key);
-    return {label:monthLabel(key),atrasado:group.filter(p=>p.status==='atrasado').length,aberto:group.filter(p=>p.status==='aberto').length,parcial:group.filter(p=>p.status==='parcial').length,entregue:group.filter(p=>p.status==='entregue').length};
+    return {label:monthLabel(key),key,atrasado:group.filter(p=>p.status==='atrasado').length,aberto:group.filter(p=>p.status==='aberto').length,parcial:group.filter(p=>p.status==='parcial').length,entregue:group.filter(p=>p.status==='entregue').length};
   });
-  const flowScs=M.scs.filter(s=>{const month=UI.chartMonths.flow||'';return !month||(s.emissao&&s.emissao.slice(0,7)===month)});
-  const flow=[{label:'Solicitações',value:flowScs.length},{label:'Cotações',value:flowScs.filter(s=>s.hasCot).length},{label:'Pedidos',value:flowScs.filter(s=>s.peds.length).length},{label:'Recebidos',value:flowScs.filter(s=>s.recebida).length}];
+  const flowScs=M.scs.filter(s=>chartDateMatches('flow',s.emissao));
+  const flow=[{label:'Solicitações',key:'Solicitações',value:flowScs.length},{label:'Cotações',key:'Cotações',value:flowScs.filter(s=>s.hasCot).length},{label:'Pedidos',key:'Pedidos',value:flowScs.filter(s=>s.peds.length).length},{label:'Recebidos',key:'Recebidos',value:flowScs.filter(s=>s.recebida).length}];
   const heatPeds=peds('heatmap');
   const buyers=[...new Set(heatPeds.map(p=>p.comprador||'Sem comprador'))];
   const categories=availableCategories();
@@ -841,35 +944,34 @@ function vGraficos(){
   const maxSpend=Math.max(1,...radar.map(r=>r.spend));radar.forEach(r=>r.values.push(r.spend/maxSpend));
   const billingMap=new Map();
   for(const p of peds('billing'))if(p.emissao){const key=p.emissao.slice(0,7),row=billingMap.get(key)||{purchase:0,billing:0};row.purchase+=p.total;billingMap.set(key,row)}
-  const billingMonth=UI.chartMonths.billing||'';
-  for(const bill of D.fat)if(bill.emissao&&(!billingMonth||bill.emissao.slice(0,7)===billingMonth)){const key=bill.emissao.slice(0,7),row=billingMap.get(key)||{purchase:0,billing:0};row.billing+=bill.total;billingMap.set(key,row)}
-  const billingRows=[...billingMap.entries()].sort().slice(-12).map(([key,value])=>({label:monthLabel(key),...value}));
+  for(const bill of D.fat)if(bill.emissao&&chartDateMatches('billing',bill.emissao)){const key=bill.emissao.slice(0,7),row=billingMap.get(key)||{purchase:0,billing:0};row.billing+=bill.total;billingMap.set(key,row)}
+  const billingRows=[...billingMap.entries()].sort().slice(-12).map(([key,value])=>({label:monthLabel(key),key,...value}));
   const paymentMap=new Map();for(const p of peds('payment')){const key=p.payment||'Não informado';paymentMap.set(key,(paymentMap.get(key)||0)+p.total)}
-  const approvalMonth=UI.chartMonths.approvals||'';
-  const approvalPeds=M.peds.filter(p=>!approvalMonth||((p.approvalDate||p.emissao)&&((p.approvalDate||p.emissao).slice(0,7)===approvalMonth)));
+  const approvalPeds=M.peds.filter(p=>chartDateMatches('approvals',p.approvalDate||p.emissao));
   const approvalMap=new Map();for(const p of approvalPeds)if(p.approver&&p.approvalDays!=null&&p.approvalDays>=0){const row=approvalMap.get(p.approver)||{sum:0,count:0};row.sum+=p.approvalDays;row.count++;approvalMap.set(p.approver,row)}
-  const approvals=[...approvalMap].map(([label,r])=>({label,value:r.sum/r.count})).sort((a,b)=>b.value-a.value);
+  const approvals=[...approvalMap].map(([label,r])=>({label,drill:label,value:r.sum/r.count})).sort((a,b)=>b.value-a.value);
   const taxPeds=peds('taxes');
-  const taxRows=[{label:'Bruto',value:taxPeds.reduce((sum,p)=>sum+p.gross,0)},{label:'Impostos',value:taxPeds.reduce((sum,p)=>sum+p.taxes,0)},{label:'Líquido',value:taxPeds.reduce((sum,p)=>sum+p.net,0)}];
+  const taxRows=[{label:'Bruto',key:'gross',value:taxPeds.reduce((sum,p)=>sum+p.gross,0)},{label:'Impostos',key:'taxes',value:taxPeds.reduce((sum,p)=>sum+p.taxes,0)},{label:'Líquido',key:'net',value:taxPeds.reduce((sum,p)=>sum+p.net,0)}];
   const funnelChart=chartSvgFunnel(flow);
-  return `<div class="row sb"><div><h1>Gráficos</h1><p class="sub">16 visualizações. Cada gráfico tem seu próprio filtro de mês; alterar um não muda os demais.</p></div><button class="btn pri" data-a="chart-presentation-start">Apresentar gráficos</button></div>
+  return `<div class="row sb"><div><h1>Gráficos</h1><p class="sub">16 visualizações com filtros independentes, comparação de períodos e detalhamento dos pedidos.</p></div><div class="row"><button class="btn" data-a="print-charts">Exportar / imprimir PDF</button><button class="btn pri" data-a="chart-presentation-start">Apresentar gráficos</button></div></div>
+  <p class="print-only">Portal de Compras · Relatório de gráficos · ${new Date().toLocaleDateString('pt-BR')}</p>
   <div class="chart-grid">
-   ${chartPanel('monthly','1. Gastos por mês · colunas','Valor total dos pedidos por mês.',chartSvgColumns(months('monthly')))}
-   ${chartPanel('evolution','2. Evolução dos gastos · linha','Tendência mensal dos valores de compra.',chartSvgLine(months('evolution')))}
-   ${chartPanel('cumulative','3. Gastos acumulados · área','Evolução do valor acumulado dos pedidos ao longo dos meses.',chartSvgLine(cumulativeMonths,'#4d91c6',true))}
-   ${chartPanel('suppliers','4. Gastos por fornecedor · barras','Fornecedores com maior valor comprado.',chartSvgHorizontal(supplierRows('suppliers')))}
-   ${chartPanel('supplier-share','5. Participação dos fornecedores · rosca','Distribuição do gasto entre os principais fornecedores.',chartSvgPie(supplierRows('supplier-share').slice(0,6),true))}
-   ${chartPanel('status','6. Pedidos por situação · pizza','Distribuição de pedidos atrasados, abertos, parciais e entregues.',chartSvgPie(statusRows))}
-   ${chartPanel('monthly-status','7. Situação mensal · colunas empilhadas','Quantidade de pedidos por situação e mês de emissão.',chartSvgStacked(monthlyStatus,['entregue','parcial','aberto','atrasado'].map(key=>({key,label:ST[key],color:CHART_STATUS[key]}))))}
+   ${chartPanel('monthly','1. Gastos por mês · colunas','Valor total dos pedidos por mês.',chartSvgColumns(months('monthly'),'var(--accent)',brl,'monthly'))}
+   ${chartPanel('evolution','2. Evolução dos gastos · linha','Tendência mensal dos valores de compra.',chartSvgLine(months('evolution'),'var(--accent)',false,'evolution'))}
+   ${chartPanel('cumulative','3. Gastos acumulados · área','Evolução do valor acumulado dos pedidos ao longo dos meses.',chartSvgLine(cumulativeMonths,'#4d91c6',true,'cumulative'))}
+   ${chartPanel('suppliers','4. Gastos por fornecedor · barras','Fornecedores com maior valor comprado.',chartSvgHorizontal(supplierRows('suppliers').map(r=>({...r,drill:r.label})),'var(--accent)',brlC,'suppliers'))}
+   ${chartPanel('supplier-share','5. Participação dos fornecedores · rosca','Distribuição do gasto entre os principais fornecedores.',chartSvgPie(supplierRows('supplier-share').slice(0,6).map(r=>({...r,drill:r.label})),true,'supplier-share'))}
+   ${chartPanel('status','6. Pedidos por situação · pizza','Distribuição de pedidos atrasados, abertos, parciais e entregues.',chartSvgPie(statusRows.map(r=>({...r,drill:r.key})),false,'status'))}
+   ${chartPanel('monthly-status','7. Situação mensal · colunas empilhadas','Quantidade de pedidos por situação e mês de emissão.',chartSvgStacked(monthlyStatus,['entregue','parcial','aberto','atrasado'].map(key=>({key,label:ST[key],color:CHART_STATUS[key]})),'monthly-status'))}
    ${chartPanel('flow','8. Fluxo de compras · funil','Solicitações que avançaram para cotação, pedido e recebimento.',funnelChart)}
-   ${chartPanel('cycle','9. Ciclo × valor do pedido · dispersão','Cada ponto representa pedido com solicitação ligada e valor disponível.',chartSvgScatter(peds('cycle').map(p=>({label:dn('ped','num',p.num),x:p.ciclo,y:p.total}))))}
-   ${chartPanel('heatmap','10. Gasto por categoria e comprador · mapa de calor','Intensidade de gasto nos itens categorizados.',buyers.length&&categories.length?chartSvgHeatmap(heat):chartEmpty('Cadastre categorias de produto na aba Estratégia para formar o mapa.'))}
-   ${chartPanel('lead','11. Lead time de entrega · histograma','Frequência de pedidos por faixa de dias até o primeiro recebimento.',chartSvgHistogram(leadTimes))}
-   ${chartPanel('radar','12. Perfil de fornecedores · radar','Compara pontualidade, pedidos concluídos e gasto relativo entre os principais fornecedores.',chartSvgRadar(radar))}
-   ${chartPanel('billing','13. Compras × faturamento · colunas agrupadas','Comparação mensal; faturamento depende do relatório complementar.',D.fat.length?chartSvgCombo(billingRows):chartEmpty('Importe o relatório de faturamento na aba Dados.'))}
-   ${chartPanel('payment','14. Condição de pagamento · barras','Valor comprado por condição informada nos pedidos.',chartSvgHorizontal([...paymentMap].map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value),'#8064a2'))}
-   ${chartPanel('approvals','15. Aprovação por responsável · barras','Tempo médio entre emissão do pedido e aprovação.',D.apr.length?chartSvgHorizontal(approvals,'#d58b1f',v=>`${nf(v,1)} dias`):chartEmpty('Importe o relatório de aprovações na aba Dados.'))}
-   ${chartPanel('taxes','16. Bruto, impostos e líquido · barras','Composição dos valores extraídos dos pedidos.',chartSvgColumns(taxRows,'#4d91c6'))}
+   ${chartPanel('cycle','9. Ciclo × valor do pedido · dispersão','Cada ponto representa pedido com solicitação ligada e valor disponível.',chartSvgScatter(peds('cycle').map(p=>({label:dn('ped','num',p.num),x:p.ciclo,y:p.total,drill:p.num}))))}
+   ${chartPanel('heatmap','10. Gasto por categoria e comprador · mapa de calor','Intensidade de gasto nos itens categorizados.',buyers.length&&categories.length?chartSvgHeatmap(heat,'heatmap'):chartEmpty('Cadastre categorias de produto na aba Estratégia para formar o mapa.'))}
+   ${chartPanel('lead','11. Lead time de entrega · histograma','Frequência de pedidos por faixa de dias até o primeiro recebimento.',chartSvgHistogram(leadTimes,'lead'))}
+   ${chartPanel('radar','12. Perfil de fornecedores · radar','Compara pontualidade, pedidos concluídos e gasto relativo entre os principais fornecedores.',chartSvgRadar(radar,'radar'))}
+   ${chartPanel('billing','13. Compras × faturamento · colunas agrupadas','Comparação mensal; faturamento depende do relatório complementar.',D.fat.length?chartSvgCombo(billingRows,'billing'):chartEmpty('Importe o relatório de faturamento na aba Dados.'))}
+   ${chartPanel('payment','14. Condição de pagamento · barras','Valor comprado por condição informada nos pedidos.',chartSvgHorizontal([...paymentMap].map(([label,value])=>({label,drill:label,value})).sort((a,b)=>b.value-a.value),'#8064a2',brlC,'payment'))}
+   ${chartPanel('approvals','15. Aprovação por responsável · barras','Tempo médio entre emissão do pedido e aprovação.',D.apr.length?chartSvgHorizontal(approvals,'#d58b1f',v=>`${nf(v,1)} dias`,'approvals'):chartEmpty('Importe o relatório de aprovações na aba Dados.'))}
+   ${chartPanel('taxes','16. Bruto, impostos e líquido · barras','Composição dos valores extraídos dos pedidos.',chartSvgColumns(taxRows,'#4d91c6',brl,'taxes'))}
   </div>`;
 }
 function syncChartPresentation(){
@@ -1075,8 +1177,75 @@ function downloadCsv(filename,rows){
   document.body.appendChild(link);link.click();link.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-const VIEWS={geral:vGeral,pedidos:vPedidos,fornecedores:vForn,estrategia:vEstrategia,graficos:vGraficos,dados:vDados,integracoes:vIntegracoes};
-const NAV=[['geral','Visão geral'],['pedidos','Acompanhamento'],['fornecedores','Fornecedores'],['estrategia','Estratégia'],['graficos','Gráficos'],['dados','Dados'],['integracoes','API / Power BI']];
+function chartDetailOrders(id,marker={}){
+  const data=marker.dataset||{};
+  let orders=id==='approvals'?M.peds.filter(p=>chartDateMatches(id,p.approvalDate||p.emissao)):chartPeds(id),drill=data.drill||'';
+  if(!drill&&id!=='flow'&&id!=='heatmap')return {orders};
+  if(['monthly','evolution','cumulative','monthly-status','billing'].includes(id)){
+    const month=drill.slice(0,7);
+    orders=orders.filter(p=>p.emissao&&(id==='cumulative'?p.emissao.slice(0,7)<=month:p.emissao.slice(0,7)===month));
+    if(id==='monthly-status'&&data.status)orders=orders.filter(p=>p.status===data.status);
+  }else if(['suppliers','supplier-share','radar'].includes(id))orders=orders.filter(p=>p.fornecedor===drill);
+  else if(id==='status')orders=orders.filter(p=>p.status===drill);
+  else if(id==='monthly-status')orders=orders.filter(p=>p.status===data.status);
+  else if(id==='cycle')orders=orders.filter(p=>p.num===drill);
+  else if(id==='heatmap')orders=orders.filter(p=>p.comprador===(data.buyer||'Sem comprador')&&p.items.some(item=>categoryOf(item.produto)===data.category));
+  else if(id==='payment')orders=orders.filter(p=>(p.payment||'Não informado')===drill);
+  else if(id==='approvals')orders=orders.filter(p=>p.approver===drill);
+  else if(id==='lead'){
+    const bucket=Number(drill),values=orders.map(p=>p.lead).filter(value=>value!=null&&value>=0),max=Math.max(0,...values);
+    orders=orders.filter(p=>p.lead!=null&&p.lead>=0&&Math.min(5,Math.floor(p.lead/(max||1)*6))===bucket);
+  }else if(id==='flow'){
+    const scs=M.scs.filter(s=>chartDateMatches(id,s.emissao));
+    const selected=drill==='Cotações'?scs.filter(s=>s.hasCot):drill==='Pedidos'?scs.filter(s=>s.peds.length):drill==='Recebidos'?scs.filter(s=>s.recebida):scs;
+    orders=selected.flatMap(s=>s.peds);
+    return {orders:[...new Map(orders.map(p=>[p.num,p])).values()],requests:selected};
+  }
+  return {orders};
+}
+function openChartDetail(id,marker={}){
+  const {orders,requests}=chartDetailOrders(id,marker);
+  const title=document.querySelector(`.chart-panel[data-chart-id="${id}"] h2`)?.textContent||'Pedidos do gráfico';
+  const unique=[...new Map(orders.map(p=>[p.num,p])).values()].sort((a,b)=>(b.emissao||'').localeCompare(a.emissao||''));
+  const requestRows=requests?`<h2>Solicitações relacionadas</h2><div class="tw"><table><thead><tr><th>Solicitação</th><th>Data</th><th>Solicitante</th><th>Etapa</th><th>Pedidos</th></tr></thead><tbody>${requests.map(s=>`<tr><td class="mono">${esc(dn('sc','num',s.num))}</td><td>${fdate(s.emissao)}</td><td>${esc(s.solicitante||'—')}</td><td>${s.recebida?'Recebida':s.peds.length?'Pedido':s.hasCot?'Cotação':'Solicitação'}</td><td>${s.peds.map(p=>`<button class="btn sm" data-a="open" data-id="${esc(p.num)}">${esc(dn('ped','num',p.num))}</button>`).join(' ')||'—'}</td></tr>`).join('')}</tbody></table></div>`:'';
+  const table=unique.length?`<div class="tw"><table><thead><tr><th>Pedido</th><th>Data</th><th>Fornecedor</th><th>Situação</th><th class="r">Valor</th><th></th></tr></thead><tbody>${unique.map(p=>`<tr><td class="mono">${esc(dn('ped','num',p.num))}</td><td>${fdate(p.emissao)}</td><td>${esc(p.fornecedor||'—')}</td><td>${pill(p.status)}</td><td class="r nw num">${brl(p.total)}</td><td class="r"><button class="btn sm" data-a="open" data-id="${esc(p.num)}">Detalhes</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">Nenhum pedido corresponde a este ponto do gráfico e ao filtro selecionado.</p>';
+  $('#modal').innerHTML=`<div class="ov" data-a="bg"><div class="dlg" role="dialog" aria-modal="true" aria-label="Detalhes de ${esc(title)}"><div class="row sb"><div><h3>${esc(title)}</h3><p class="small muted">${nf(unique.length)} pedidos encontrados com o filtro atual.</p></div><button class="btn" data-a="close">Fechar</button></div>${requestRows}${table}</div></div>`;
+  document.body.style.overflow='hidden';$('#modal [data-a=close]')?.focus();
+}
+function alertSuppliers(){
+  return M.forn.map(f=>{
+    const delivered=f.peds.filter(p=>p.status==='entregue'&&p.lead!=null&&p.lead>=0).sort((a,b)=>(b.lastNf||'').localeCompare(a.lastNf||''));
+    if(delivered.length<6)return null;
+    const recent=delivered.slice(0,3),previous=delivered.slice(3,6);
+    const avg=list=>list.reduce((sum,p)=>sum+p.lead,0)/list.length;
+    const current=avg(recent),prior=avg(previous);
+    return current>=prior+2&&current>=prior*1.2?{supplier:f.nome,current,prior,orders:recent}:null;
+  }).filter(Boolean);
+}
+function vAlertas(){
+  if(!hasData())return `<h1>Alertas</h1><p class="sub">Acompanhamento de pontos que precisam de atenção.</p>${noData()}`;
+  const overdue=M.peds.filter(p=>p.status==='atrasado').sort((a,b)=>b.atraso-a.atraso);
+  const stalled=M.scs.filter(s=>s.idade>=7&&!s.peds.length).sort((a,b)=>b.idade-a.idade);
+  const supplierAlerts=alertSuppliers();
+  const alertRow=(title,description,action,kind='')=>`<div class="alert-row"><span class="alert-count ${kind}">!</span><div class="t"><div class="title">${title}</div><div class="desc">${description}</div></div>${action}</div>`;
+  return `<h1>Alertas acionáveis</h1><p class="sub">Itens que podem precisar de acompanhamento. Os alertas usam os relatórios carregados; verifique os dados de origem.</p>
+   <section class="panel"><h2>Pedidos em atraso · ${nf(overdue.length)}</h2><div class="alert-list">${overdue.length?overdue.slice(0,50).map(p=>alertRow(`Pedido ${esc(dn('ped','num',p.num))}`,`${esc(p.fornecedor||'Sem fornecedor')} · ${p.atraso} dias de atraso · saldo ${brlC(p.saldo)}`,`<button class="btn sm" data-a="open" data-id="${esc(p.num)}">Ver pedido</button>`)).join(''):'<p class="muted">Nenhum pedido atrasado.</p>'}</div></section>
+   <section class="panel"><h2>Solicitações sem pedido há 7 dias ou mais · ${nf(stalled.length)}</h2><div class="alert-list">${stalled.length?stalled.slice(0,50).map(s=>alertRow(`Solicitação ${esc(dn('sc','num',s.num))}`,`${esc(s.solicitante||'Sem solicitante')} · ${s.idade} dias · ${s.hasCot?'cotação registrada, sem pedido':'sem cotação ou pedido'}`,`<button class="btn sm" data-a="alert-request" data-id="${esc(s.num)}">Ver solicitação</button>`,'warn')).join(''):'<p class="muted">Nenhuma solicitação parada por 7 dias ou mais.</p>'}</div></section>
+   <section class="panel"><h2>Piora recente no prazo do fornecedor · ${nf(supplierAlerts.length)}</h2><p class="small muted">Comparação das 3 entregas mais recentes com as 3 anteriores; exige 6 entregas calculáveis e aumento de pelo menos 2 dias e 20%.</p><div class="alert-list">${supplierAlerts.length?supplierAlerts.map(a=>alertRow(esc(a.supplier),`Lead time médio: ${nf(a.prior,1)} → ${nf(a.current,1)} dias nas entregas mais recentes.`, `<button class="btn sm" data-a="alert-supplier" data-name="${esc(a.supplier)}">Ver pedidos</button>`)).join(''):'<p class="muted">Sem pioras que atendam ao mínimo de dados para comparação.</p>'}</div></section>`;
+}
+function openAlertOrders(title,orders){
+  const unique=[...new Map(orders.map(p=>[p.num,p])).values()].sort((a,b)=>(b.emissao||'').localeCompare(a.emissao||''));
+  $('#modal').innerHTML=`<div class="ov" data-a="bg"><div class="dlg" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="row sb"><div><h3>${esc(title)}</h3><p class="small muted">${nf(unique.length)} pedidos.</p></div><button class="btn" data-a="close">Fechar</button></div>${unique.length?`<div class="tw"><table><thead><tr><th>Pedido</th><th>Data</th><th>Fornecedor</th><th>Situação</th><th class="r">Valor</th><th></th></tr></thead><tbody>${unique.map(p=>`<tr><td class="mono">${esc(dn('ped','num',p.num))}</td><td>${fdate(p.emissao)}</td><td>${esc(p.fornecedor||'—')}</td><td>${pill(p.status)}</td><td class="r nw num">${brl(p.total)}</td><td class="r"><button class="btn sm" data-a="open" data-id="${esc(p.num)}">Detalhes</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="muted">Nenhum pedido encontrado.</p>'}</div></div>`;
+  document.body.style.overflow='hidden';$('#modal [data-a=close]')?.focus();
+}
+function openAlertRequest(num){
+  const s=M.scMap.get(num);if(!s)return;
+  const linked=s.peds.length?`<div class="row">${s.peds.map(p=>`<button class="btn sm" data-a="open" data-id="${esc(p.num)}">Pedido ${esc(dn('ped','num',p.num))}</button>`).join('')}</div>`:'<p class="muted">Nenhum pedido ligado.</p>';
+  $('#modal').innerHTML=`<div class="ov" data-a="bg"><div class="dlg" role="dialog" aria-modal="true" aria-label="Solicitação ${esc(dn('sc','num',num))}"><div class="row sb"><div><h3>Solicitação ${esc(dn('sc','num',num))}</h3><p class="small muted">${fdate(s.emissao)} · ${s.idade} dias · ${esc(s.solicitante||'Sem solicitante')}</p></div><button class="btn" data-a="close">Fechar</button></div><p>${s.hasCot?'Há cotação vinculada, sem pedido.':'Não há cotação vinculada.'}</p>${linked}</div></div>`;
+  document.body.style.overflow='hidden';$('#modal [data-a=close]')?.focus();
+}
+const VIEWS={geral:vGeral,pedidos:vPedidos,fornecedores:vForn,estrategia:vEstrategia,graficos:vGraficos,alertas:vAlertas,dados:vDados,integracoes:vIntegracoes};
+const NAV=[['geral','Visão geral'],['pedidos','Acompanhamento'],['fornecedores','Fornecedores'],['estrategia','Estratégia'],['graficos','Gráficos'],['alertas','Alertas'],['dados','Dados'],['integracoes','API / Power BI']];
 
 /* ================= detalhe do pedido ================= */
 function detail(num){
@@ -1130,8 +1299,13 @@ document.addEventListener('click',e=>{
    'chart-presentation-next':()=>moveChartPresentation(1),
    'chart-presentation-pause':toggleChartPresentationPause,
    'chart-presentation-exit':()=>exitChartPresentation(),
+   'chart-mark':()=>openChartDetail(el.dataset.chart,el),
+   'chart-drill':()=>openChartDetail(el.dataset.chart),
+   'print-charts':()=>window.print(),
    logout:()=>{localStorage.removeItem(AUTH_SESSION);location.replace('index.html')},
    open:()=>detail(el.dataset.id),close:closeDetail,
+   'alert-request':()=>openAlertRequest(el.dataset.id),
+   'alert-supplier':()=>{const supplier=M.forn.find(f=>f.nome===el.dataset.name);openAlertOrders(`Pedidos de ${el.dataset.name}`,supplier?supplier.peds:[])},
    status:()=>{UI.status=el.dataset.s;UI.limit=100;render()},
    goto:()=>{UI.view='pedidos';UI.status=el.dataset.s;UI.q='';UI.limit=100;render();window.scrollTo(0,0)},
    forn:()=>{UI.view='pedidos';UI.status='todos';UI.q=el.dataset.n;UI.limit=100;render();window.scrollTo(0,0)},
@@ -1188,7 +1362,9 @@ document.addEventListener('change',e=>{
   if(el.type==='file'&&el.files[0]){loadFile(el.dataset.k,el.files[0]);el.value='';return}
   const a=el.dataset&&el.dataset.a;
   if(a==='period'){UI.period=el.value;render()}
-  else if(a==='chart-month'){UI.chartMonths[el.dataset.chart]=el.value;render()}
+  else if(a==='chart-month'){const filter=UI.chartFilters[el.dataset.chart]||{month:'',start:'',end:''};filter.month=el.value;filter.start='';filter.end='';UI.chartFilters[el.dataset.chart]=filter;render()}
+  else if(a==='chart-date'){const filter=UI.chartFilters[el.dataset.chart]||{month:'',start:'',end:''};filter.month='';filter[el.dataset.edge]=el.value;UI.chartFilters[el.dataset.chart]=filter;render()}
+  else if(a==='chart-compare'){UI.chartCompare[el.dataset.chart]=el.checked;render()}
   else if(a==='sort'){UI.sort=el.value;$('#pt').innerHTML=pedTable()}
   else if(a==='buyer-filter'){UI.buyer=el.value;$('#pt').innerHTML=pedTable()}
   else if(a==='category-filter'){UI.category=el.value;$('#pt').innerHTML=pedTable()}
