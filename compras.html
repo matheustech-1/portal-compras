@@ -71,6 +71,35 @@ input[type=search],input[type=text],input[type=number],input[type=date],select{b
 .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:16px;margin-bottom:16px}
 .chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:16px;margin-bottom:16px}
 .chart-panel{overflow:hidden}
+.chart-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.chart-heading h2{margin-bottom:0}
+.chart-month{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;white-space:nowrap}
+.chart-month select{max-width:140px;padding:4px 7px;font-size:12px}
+.chart-presentation-open{overflow:hidden}
+.chart-presentation-open .hd{display:none}
+.chart-presentation-open #app{position:fixed;inset:0;z-index:70;width:100%;max-width:none;margin:0;padding:20px 24px 94px;overflow-y:auto;background:var(--bg)}
+.chart-presentation-open #app>:not(.chart-grid){display:none!important}
+.chart-presentation-open #app .chart-grid{display:block;width:min(1400px,100%);min-height:100%;margin:0 auto}
+.chart-presentation-open #app .chart-panel{display:none}
+.chart-presentation-open #app .chart-panel.presentation-current{display:flex;flex-direction:column;min-height:calc(100vh - 126px);padding:clamp(18px,3vw,36px)}
+.chart-presentation-open #app .chart-panel h2{font-size:clamp(16px,2vw,22px)}
+.chart-presentation-open #app .chart-panel>p{font-size:clamp(13px,1.4vw,17px);margin:10px 0 20px}
+.chart-presentation-open #app .chart-panel .chart-svg{width:100%;height:clamp(260px,62vh,680px);min-height:0;flex:1}
+.chart-presentation-open #app .chart-panel .chart-legend{font-size:14px;gap:12px 20px}
+.chart-presentation-controls{position:fixed;inset:auto 0 0;z-index:80;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px max(24px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(24px,env(safe-area-inset-left,0px));background:var(--surface);border-top:1px solid var(--line)}
+.chart-presentation-controls[hidden]{display:none}
+.chart-presentation-controls .title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.chart-presentation-controls .group{display:flex;align-items:center;gap:8px}
+.chart-presentation-controls .count{min-width:58px;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}
+@media(max-width:620px){
+  .chart-presentation-open #app{padding:12px 12px 130px}
+  .chart-presentation-open #app .chart-panel.presentation-current{min-height:calc(100vh - 154px);padding:16px}
+  .chart-presentation-open #app .chart-panel .chart-svg{height:48vh}
+  .chart-presentation-controls{flex-wrap:wrap;justify-content:center;padding-inline:12px}
+  .chart-presentation-controls .title{flex:1 0 100%;text-align:center}
+  .chart-presentation-controls .group{gap:5px}
+  .chart-presentation-controls .btn{padding:6px 9px}
+}
 .chart-svg{display:block;width:100%;height:auto;min-height:230px}
 .chart-legend{display:flex;gap:8px 14px;flex-wrap:wrap;margin-top:8px}
 .chart-legend span{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
@@ -162,6 +191,7 @@ summary{cursor:pointer;color:var(--accent);font-weight:500}
   <div class="account-actions"><span class="account-email" id="account-email"></span><button class="btn sm" data-a="logout">Sair</button></div>
 </div></header>
 <main class="in" id="app"></main>
+<div id="chart-presentation-controls" class="chart-presentation-controls" hidden></div>
 <div id="modal"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
@@ -290,7 +320,9 @@ let D={sc:[],cot:[],ped:[],nf:[]};            // linhas normalizadas
 let BS={};
 let PAD={};                                    // estatística da normalização
 let M=null;                                   // modelo ligado (pedidos, SCs, fornecedores)
-const UI={view:'geral',period:'all',status:'todos',q:'',sort:'atraso',limit:100,category:'',buyer:'',confirm:false};
+const UI={view:'geral',period:'all',status:'todos',q:'',sort:'atraso',limit:100,category:'',buyer:'',chartMonths:{},confirm:false};
+const chartPresentation={active:false,index:0,paused:false,timer:0};
+const CHART_PRESENTATION_MS=10000;
 
 function persist(){try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){UI.noSave=true;toast('Não foi possível salvar os dados desta conta neste navegador.')}}
 function migrateLegacyData(){
@@ -675,12 +707,33 @@ function vEstrategia(){
 const CHART_COLORS=['#0f6b5c','#4d91c6','#d58b1f','#b34e60','#8064a2','#4a9c8a','#8a9b35','#d06b35'];
 const CHART_STATUS={atrasado:'#b3261e',aberto:'#4d91c6',parcial:'#d58b1f',entregue:'#1b7f4b'};
 const svgChart=content=>`<svg class="chart-svg" viewBox="0 0 640 280" role="img" aria-label="Gráfico de compras">${content}</svg>`;
-const chartPanel=(title,description,chart)=>`<section class="panel chart-panel"><h2>${title}</h2><p class="small muted">${description}</p>${chart}</section>`;
 const chartEmpty=message=>`<div class="empty">${message}</div>`;
 const monthLabel=key=>`${MES[Number(key.slice(5,7))-1]}/${key.slice(2,4)}`;
-function chartMonthly(){
+function chartMonthOptions(){
+  const months=new Set();
+  [D.ped,D.sc,D.cot,D.nf,D.apr,D.fat].forEach(rows=>rows.forEach(row=>{
+    const date=row.emissao||row.approvalDate;
+    if(date)months.add(date.slice(0,7));
+  }));
+  return [...months].sort();
+}
+function chartMonthSelect(id,title){
+  const selected=UI.chartMonths[id]||'';
+  return `<label class="chart-month">Mês <select data-a="chart-month" data-chart="${id}" aria-label="Filtrar ${title} por mês">
+    <option value=""${selected===''?' selected':''}>Todos</option>
+    ${chartMonthOptions().map(month=>`<option value="${month}"${selected===month?' selected':''}>${monthLabel(month)}</option>`).join('')}
+  </select></label>`;
+}
+function chartPanel(id,title,description,chart){
+  return `<section class="panel chart-panel" data-chart-id="${id}"><div class="chart-heading"><h2>${title}</h2>${chartMonthSelect(id,title)}</div><p class="small muted">${description}</p>${chart}</section>`;
+}
+function chartPeds(id){
+  const month=UI.chartMonths[id]||'';
+  return M.peds.filter(p=>!month||(p.emissao&&p.emissao.slice(0,7)===month));
+}
+function chartMonthly(id){
   const months=new Map();
-  for(const p of M.peds.filter(inPeriod)){if(!p.emissao)continue;const key=p.emissao.slice(0,7);months.set(key,(months.get(key)||0)+p.total)}
+  for(const p of chartPeds(id)){if(!p.emissao)continue;const key=p.emissao.slice(0,7);months.set(key,(months.get(key)||0)+p.total)}
   return [...months.entries()].sort().slice(-12).map(([label,value])=>({label:monthLabel(label),value}));
 }
 function chartSvgColumns(rows,color='var(--accent)',format=brl){
@@ -764,52 +817,121 @@ function chartSvgCombo(rows){
 }
 function vGraficos(){
   if(!hasData())return `<h1>Gráficos</h1><p class="sub">Visualizações da operação de compras.</p>${noData()}`;
-  const peds=M.peds.filter(inPeriod),months=chartMonthly();
+  const peds=id=>chartPeds(id);
+  const months=id=>chartMonthly(id);
   let cumulative=0;
-  const cumulativeMonths=months.map(row=>{cumulative+=row.value;return {...row,value:cumulative}});
-  const suppliers=M.forn.map(f=>({label:f.nome,value:f.peds.filter(inPeriod).reduce((sum,p)=>sum+p.total,0)})).filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
-  const statusRows=['atrasado','aberto','parcial','entregue'].map(s=>({label:ST[s],value:peds.filter(p=>p.status===s).length}));
-  const monthlyStatus=[...new Set(peds.map(p=>p.emissao&&p.emissao.slice(0,7)).filter(Boolean))].sort().slice(-8).map(key=>{
-    const group=peds.filter(p=>p.emissao&&p.emissao.slice(0,7)===key);
+  const cumulativeMonths=months('cumulative').map(row=>{cumulative+=row.value;return {...row,value:cumulative}});
+  const supplierRows=id=>M.forn.map(f=>({label:f.nome,value:f.peds.filter(p=>peds(id).includes(p)).reduce((sum,p)=>sum+p.total,0)}))
+    .filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
+  const statusRows=['atrasado','aberto','parcial','entregue'].map(s=>({label:ST[s],value:peds('status').filter(p=>p.status===s).length}));
+  const selectedStatusPeds=peds('monthly-status');
+  const monthlyStatus=[...new Set(selectedStatusPeds.map(p=>p.emissao&&p.emissao.slice(0,7)).filter(Boolean))].sort().slice(-8).map(key=>{
+    const group=selectedStatusPeds.filter(p=>p.emissao&&p.emissao.slice(0,7)===key);
     return {label:monthLabel(key),atrasado:group.filter(p=>p.status==='atrasado').length,aberto:group.filter(p=>p.status==='aberto').length,parcial:group.filter(p=>p.status==='parcial').length,entregue:group.filter(p=>p.status==='entregue').length};
   });
-  const flow=[{label:'Solicitações',value:M.scs.length},{label:'Cotações',value:M.scs.filter(s=>s.hasCot).length},{label:'Pedidos',value:M.scs.filter(s=>s.peds.length).length},{label:'Recebidos',value:M.scs.filter(s=>s.recebida).length}];
-  const buyers=[...new Set(peds.map(p=>p.comprador||'Sem comprador'))];
+  const flowScs=M.scs.filter(s=>{const month=UI.chartMonths.flow||'';return !month||(s.emissao&&s.emissao.slice(0,7)===month)});
+  const flow=[{label:'Solicitações',value:flowScs.length},{label:'Cotações',value:flowScs.filter(s=>s.hasCot).length},{label:'Pedidos',value:flowScs.filter(s=>s.peds.length).length},{label:'Recebidos',value:flowScs.filter(s=>s.recebida).length}];
+  const heatPeds=peds('heatmap');
+  const buyers=[...new Set(heatPeds.map(p=>p.comprador||'Sem comprador'))];
   const categories=availableCategories();
   const heat=[];
-  for(const p of peds)for(const item of p.items){const category=categoryOf(item.produto),buyer=p.comprador||'Sem comprador';if(category==='Sem categoria')continue;const value=item.total||item.preco*item.qtd;const row=heat.find(x=>x.category===category&&x.buyer===buyer);if(row)row.value+=value;else heat.push({category,buyer,value})}
-  const leadTimes=peds.map(p=>p.lead).filter(x=>x!=null&&x>=0);
-  const radar=M.forn.map(f=>{const orders=f.peds.filter(inPeriod),delivered=orders.filter(p=>p.noPrazo!==null),completed=orders.filter(p=>p.status==='entregue');return {name:f.nome,spend:orders.reduce((sum,p)=>sum+p.total,0),values:[delivered.length?delivered.filter(p=>p.noPrazo).length/delivered.length:0,orders.length?completed.length/orders.length:0]}}).filter(x=>x.spend>0).sort((a,b)=>b.spend-a.spend).slice(0,4);
+  for(const p of heatPeds)for(const item of p.items){const category=categoryOf(item.produto),buyer=p.comprador||'Sem comprador';if(category==='Sem categoria')continue;const value=item.total||item.preco*item.qtd;const row=heat.find(x=>x.category===category&&x.buyer===buyer);if(row)row.value+=value;else heat.push({category,buyer,value})}
+  const leadTimes=peds('lead').map(p=>p.lead).filter(x=>x!=null&&x>=0);
+  const radar=M.forn.map(f=>{const orders=f.peds.filter(p=>peds('radar').includes(p)),delivered=orders.filter(p=>p.noPrazo!==null),completed=orders.filter(p=>p.status==='entregue');return {name:f.nome,spend:orders.reduce((sum,p)=>sum+p.total,0),values:[delivered.length?delivered.filter(p=>p.noPrazo).length/delivered.length:0,orders.length?completed.length/orders.length:0]}}).filter(x=>x.spend>0).sort((a,b)=>b.spend-a.spend).slice(0,4);
   const maxSpend=Math.max(1,...radar.map(r=>r.spend));radar.forEach(r=>r.values.push(r.spend/maxSpend));
   const billingMap=new Map();
-  for(const p of peds)if(p.emissao){const key=p.emissao.slice(0,7),row=billingMap.get(key)||{purchase:0,billing:0};row.purchase+=p.total;billingMap.set(key,row)}
-  for(const bill of D.fat)if(bill.emissao&&inPeriod({emissao:bill.emissao})){const key=bill.emissao.slice(0,7),row=billingMap.get(key)||{purchase:0,billing:0};row.billing+=bill.total;billingMap.set(key,row)}
+  for(const p of peds('billing'))if(p.emissao){const key=p.emissao.slice(0,7),row=billingMap.get(key)||{purchase:0,billing:0};row.purchase+=p.total;billingMap.set(key,row)}
+  const billingMonth=UI.chartMonths.billing||'';
+  for(const bill of D.fat)if(bill.emissao&&(!billingMonth||bill.emissao.slice(0,7)===billingMonth)){const key=bill.emissao.slice(0,7),row=billingMap.get(key)||{purchase:0,billing:0};row.billing+=bill.total;billingMap.set(key,row)}
   const billingRows=[...billingMap.entries()].sort().slice(-12).map(([key,value])=>({label:monthLabel(key),...value}));
-  const paymentMap=new Map();for(const p of peds){const key=p.payment||'Não informado';paymentMap.set(key,(paymentMap.get(key)||0)+p.total)}
-  const approvalMap=new Map();for(const p of peds)if(p.approver&&p.approvalDays!=null&&p.approvalDays>=0){const row=approvalMap.get(p.approver)||{sum:0,count:0};row.sum+=p.approvalDays;row.count++;approvalMap.set(p.approver,row)}
+  const paymentMap=new Map();for(const p of peds('payment')){const key=p.payment||'Não informado';paymentMap.set(key,(paymentMap.get(key)||0)+p.total)}
+  const approvalMonth=UI.chartMonths.approvals||'';
+  const approvalPeds=M.peds.filter(p=>!approvalMonth||((p.approvalDate||p.emissao)&&((p.approvalDate||p.emissao).slice(0,7)===approvalMonth)));
+  const approvalMap=new Map();for(const p of approvalPeds)if(p.approver&&p.approvalDays!=null&&p.approvalDays>=0){const row=approvalMap.get(p.approver)||{sum:0,count:0};row.sum+=p.approvalDays;row.count++;approvalMap.set(p.approver,row)}
   const approvals=[...approvalMap].map(([label,r])=>({label,value:r.sum/r.count})).sort((a,b)=>b.value-a.value);
-  const taxRows=[{label:'Bruto',value:peds.reduce((sum,p)=>sum+p.gross,0)},{label:'Impostos',value:peds.reduce((sum,p)=>sum+p.taxes,0)},{label:'Líquido',value:peds.reduce((sum,p)=>sum+p.net,0)}];
+  const taxPeds=peds('taxes');
+  const taxRows=[{label:'Bruto',value:taxPeds.reduce((sum,p)=>sum+p.gross,0)},{label:'Impostos',value:taxPeds.reduce((sum,p)=>sum+p.taxes,0)},{label:'Líquido',value:taxPeds.reduce((sum,p)=>sum+p.net,0)}];
   const funnelChart=chartSvgFunnel(flow);
-  return `<div class="row sb"><div><h1>Gráficos</h1><p class="sub">12 visualizações da operação. Os gráficos usam o período selecionado e os dados carregados neste navegador.</p></div>
-   <label class="row small muted">Período <select id="period" data-a="period">${[['all','Tudo'],['30','30 dias'],['90','90 dias'],['365','12 meses']].map(([v,l])=>`<option value="${v}"${UI.period===v?' selected':''}>${l}</option>`).join('')}</select></label></div>
+  return `<div class="row sb"><div><h1>Gráficos</h1><p class="sub">16 visualizações. Cada gráfico tem seu próprio filtro de mês; alterar um não muda os demais.</p></div><button class="btn pri" data-a="chart-presentation-start">Apresentar gráficos</button></div>
   <div class="chart-grid">
-   ${chartPanel('1. Gastos por mês · colunas','Valor total dos pedidos por mês.',chartSvgColumns(months))}
-   ${chartPanel('2. Evolução dos gastos · linha','Tendência mensal dos valores de compra.',chartSvgLine(months))}
-   ${chartPanel('3. Gastos acumulados · área','Evolução do valor acumulado dos pedidos ao longo dos meses.',chartSvgLine(cumulativeMonths,'#4d91c6',true))}
-   ${chartPanel('4. Gastos por fornecedor · barras','Fornecedores com maior valor comprado.',chartSvgHorizontal(suppliers))}
-   ${chartPanel('5. Participação dos fornecedores · rosca','Distribuição do gasto entre os principais fornecedores.',chartSvgPie(suppliers.slice(0,6),true))}
-   ${chartPanel('6. Pedidos por situação · pizza','Distribuição de pedidos atrasados, abertos, parciais e entregues.',chartSvgPie(statusRows))}
-   ${chartPanel('7. Situação mensal · colunas empilhadas','Quantidade de pedidos por situação e mês de emissão.',chartSvgStacked(monthlyStatus,['entregue','parcial','aberto','atrasado'].map(key=>({key,label:ST[key],color:CHART_STATUS[key]}))))}
-   ${chartPanel('8. Fluxo de compras · funil','Solicitações que avançaram para cotação, pedido e recebimento.',funnelChart)}
-   ${chartPanel('9. Ciclo × valor do pedido · dispersão','Cada ponto representa pedido com solicitação ligada e valor disponível.',chartSvgScatter(peds.map(p=>({label:dn('ped','num',p.num),x:p.ciclo,y:p.total}))))}
-   ${chartPanel('10. Gasto por categoria e comprador · mapa de calor','Intensidade de gasto nos itens categorizados.',buyers.length&&categories.length?chartSvgHeatmap(heat):chartEmpty('Cadastre categorias de produto na aba Estratégia para formar o mapa.'))}
-   ${chartPanel('11. Lead time de entrega · histograma','Frequência de pedidos por faixa de dias até o primeiro recebimento.',chartSvgHistogram(leadTimes))}
-   ${chartPanel('12. Perfil de fornecedores · radar','Compara pontualidade, pedidos concluídos e gasto relativo entre os principais fornecedores.',chartSvgRadar(radar))}
-   ${chartPanel('13. Compras × faturamento · colunas agrupadas','Comparação mensal; faturamento depende do relatório complementar.',D.fat.length?chartSvgCombo(billingRows):chartEmpty('Importe o relatório de faturamento na aba Dados.'))}
-   ${chartPanel('14. Condição de pagamento · barras','Valor comprado por condição informada nos pedidos.',chartSvgHorizontal([...paymentMap].map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value),'#8064a2'))}
-   ${chartPanel('15. Aprovação por responsável · barras','Tempo médio entre emissão do pedido e aprovação.',D.apr.length?chartSvgHorizontal(approvals,'#d58b1f',v=>`${nf(v,1)} dias`):chartEmpty('Importe o relatório de aprovações na aba Dados.'))}
-   ${chartPanel('16. Bruto, impostos e líquido · barras','Composição dos valores extraídos dos pedidos.',chartSvgColumns(taxRows,'#4d91c6'))}
+   ${chartPanel('monthly','1. Gastos por mês · colunas','Valor total dos pedidos por mês.',chartSvgColumns(months('monthly')))}
+   ${chartPanel('evolution','2. Evolução dos gastos · linha','Tendência mensal dos valores de compra.',chartSvgLine(months('evolution')))}
+   ${chartPanel('cumulative','3. Gastos acumulados · área','Evolução do valor acumulado dos pedidos ao longo dos meses.',chartSvgLine(cumulativeMonths,'#4d91c6',true))}
+   ${chartPanel('suppliers','4. Gastos por fornecedor · barras','Fornecedores com maior valor comprado.',chartSvgHorizontal(supplierRows('suppliers')))}
+   ${chartPanel('supplier-share','5. Participação dos fornecedores · rosca','Distribuição do gasto entre os principais fornecedores.',chartSvgPie(supplierRows('supplier-share').slice(0,6),true))}
+   ${chartPanel('status','6. Pedidos por situação · pizza','Distribuição de pedidos atrasados, abertos, parciais e entregues.',chartSvgPie(statusRows))}
+   ${chartPanel('monthly-status','7. Situação mensal · colunas empilhadas','Quantidade de pedidos por situação e mês de emissão.',chartSvgStacked(monthlyStatus,['entregue','parcial','aberto','atrasado'].map(key=>({key,label:ST[key],color:CHART_STATUS[key]}))))}
+   ${chartPanel('flow','8. Fluxo de compras · funil','Solicitações que avançaram para cotação, pedido e recebimento.',funnelChart)}
+   ${chartPanel('cycle','9. Ciclo × valor do pedido · dispersão','Cada ponto representa pedido com solicitação ligada e valor disponível.',chartSvgScatter(peds('cycle').map(p=>({label:dn('ped','num',p.num),x:p.ciclo,y:p.total}))))}
+   ${chartPanel('heatmap','10. Gasto por categoria e comprador · mapa de calor','Intensidade de gasto nos itens categorizados.',buyers.length&&categories.length?chartSvgHeatmap(heat):chartEmpty('Cadastre categorias de produto na aba Estratégia para formar o mapa.'))}
+   ${chartPanel('lead','11. Lead time de entrega · histograma','Frequência de pedidos por faixa de dias até o primeiro recebimento.',chartSvgHistogram(leadTimes))}
+   ${chartPanel('radar','12. Perfil de fornecedores · radar','Compara pontualidade, pedidos concluídos e gasto relativo entre os principais fornecedores.',chartSvgRadar(radar))}
+   ${chartPanel('billing','13. Compras × faturamento · colunas agrupadas','Comparação mensal; faturamento depende do relatório complementar.',D.fat.length?chartSvgCombo(billingRows):chartEmpty('Importe o relatório de faturamento na aba Dados.'))}
+   ${chartPanel('payment','14. Condição de pagamento · barras','Valor comprado por condição informada nos pedidos.',chartSvgHorizontal([...paymentMap].map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value),'#8064a2'))}
+   ${chartPanel('approvals','15. Aprovação por responsável · barras','Tempo médio entre emissão do pedido e aprovação.',D.apr.length?chartSvgHorizontal(approvals,'#d58b1f',v=>`${nf(v,1)} dias`):chartEmpty('Importe o relatório de aprovações na aba Dados.'))}
+   ${chartPanel('taxes','16. Bruto, impostos e líquido · barras','Composição dos valores extraídos dos pedidos.',chartSvgColumns(taxRows,'#4d91c6'))}
   </div>`;
+}
+function syncChartPresentation(){
+  const root=$('#chart-presentation-controls');
+  if(!chartPresentation.active||UI.view!=='graficos'){
+    root.hidden=true;
+    root.innerHTML='';
+    document.body.classList.remove('chart-presentation-open');
+    return;
+  }
+  const panels=[...document.querySelectorAll('#app .chart-panel')];
+  if(!panels.length){exitChartPresentation(false);return}
+  chartPresentation.index=((chartPresentation.index%panels.length)+panels.length)%panels.length;
+  panels.forEach((panel,index)=>panel.classList.toggle('presentation-current',index===chartPresentation.index));
+  const title=panels[chartPresentation.index].querySelector('h2').textContent;
+  root.innerHTML=`<span class="title">${esc(title)}</span><div class="group">
+    <button class="btn" data-a="chart-presentation-prev" aria-label="Gráfico anterior">← Anterior</button>
+    <span class="count">${chartPresentation.index+1} / ${panels.length}</span>
+    <button class="btn pri" data-a="chart-presentation-pause">${chartPresentation.paused?'Continuar':'Pausar'}</button>
+    <button class="btn" data-a="chart-presentation-next" aria-label="Próximo gráfico">Próximo →</button>
+    <button class="btn" data-a="chart-presentation-exit">Sair Esc</button>
+  </div>`;
+  root.hidden=false;
+  document.body.classList.add('chart-presentation-open');
+}
+function scheduleChartPresentation(){
+  clearTimeout(chartPresentation.timer);
+  if(!chartPresentation.active||chartPresentation.paused)return;
+  chartPresentation.timer=setTimeout(()=>{
+    chartPresentation.index++;
+    render();
+    scheduleChartPresentation();
+  },CHART_PRESENTATION_MS);
+}
+function startChartPresentation(){
+  if(UI.view!=='graficos')return;
+  chartPresentation.active=true;
+  chartPresentation.index=0;
+  chartPresentation.paused=false;
+  render();
+  scheduleChartPresentation();
+  $('#chart-presentation-controls [data-a="chart-presentation-prev"]').focus();
+}
+function moveChartPresentation(offset){
+  const panels=document.querySelectorAll('#app .chart-panel');
+  if(!panels.length)return;
+  chartPresentation.index=(chartPresentation.index+offset+panels.length)%panels.length;
+  render();
+  scheduleChartPresentation();
+}
+function toggleChartPresentationPause(){
+  chartPresentation.paused=!chartPresentation.paused;
+  syncChartPresentation();
+  scheduleChartPresentation();
+}
+function exitChartPresentation(restoreFocus=true){
+  clearTimeout(chartPresentation.timer);
+  chartPresentation.timer=0;
+  chartPresentation.active=false;
+  chartPresentation.paused=false;
+  syncChartPresentation();
+  if(restoreFocus)$('#app [data-a="chart-presentation-start"]')?.focus();
 }
 
 function qualityList(){
@@ -996,12 +1118,18 @@ function render(){
   $('#fresh').textContent=hasData()&&!S.sample&&ws.length?`Dados carregados em ${new Date(ws[ws.length-1]).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}`:S.sample?'Exemplo':'Sem dados';
   const ban=S.sample&&UI.view!=='dados'?`<div class="banner"><span><b>Dados de exemplo.</b> Fornecedores e valores são fictícios. Carregue seus relatórios do Protheus para ver os números reais.</span><button class="btn pri sm" data-a="view" data-v="dados">Carregar meus dados</button></div>`:'';
   $('#app').innerHTML=ban+VIEWS[UI.view]();
+  syncChartPresentation();
 }
 document.addEventListener('click',e=>{
   const el=e.target.closest('[data-a]');if(!el)return;const a=el.dataset.a;
   if(a==='bg'){if(e.target===el)closeDetail();return}
   const A={
-   view:()=>{UI.view=el.dataset.v;UI.confirm=false;render();window.scrollTo(0,0)},
+   view:()=>{if(chartPresentation.active)exitChartPresentation(false);UI.view=el.dataset.v;UI.confirm=false;render();window.scrollTo(0,0)},
+   'chart-presentation-start':startChartPresentation,
+   'chart-presentation-prev':()=>moveChartPresentation(-1),
+   'chart-presentation-next':()=>moveChartPresentation(1),
+   'chart-presentation-pause':toggleChartPresentationPause,
+   'chart-presentation-exit':()=>exitChartPresentation(),
    logout:()=>{localStorage.removeItem(AUTH_SESSION);location.replace('index.html')},
    open:()=>detail(el.dataset.id),close:closeDetail,
    status:()=>{UI.status=el.dataset.s;UI.limit=100;render()},
@@ -1060,6 +1188,7 @@ document.addEventListener('change',e=>{
   if(el.type==='file'&&el.files[0]){loadFile(el.dataset.k,el.files[0]);el.value='';return}
   const a=el.dataset&&el.dataset.a;
   if(a==='period'){UI.period=el.value;render()}
+  else if(a==='chart-month'){UI.chartMonths[el.dataset.chart]=el.value;render()}
   else if(a==='sort'){UI.sort=el.value;$('#pt').innerHTML=pedTable()}
   else if(a==='buyer-filter'){UI.buyer=el.value;$('#pt').innerHTML=pedTable()}
   else if(a==='category-filter'){UI.category=el.value;$('#pt').innerHTML=pedTable()}
@@ -1067,7 +1196,15 @@ document.addEventListener('change',e=>{
     const open=[...document.querySelectorAll('details')].map(d=>d.open);render();document.querySelectorAll('details').forEach((d,i)=>d.open=!!open[i])}
 });
 document.addEventListener('input',e=>{if(e.target.id==='q'){UI.q=e.target.value;UI.limit=100;$('#pt').innerHTML=pedTable()}});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#modal .ov'))closeDetail()});
+document.addEventListener('keydown',e=>{
+  if(chartPresentation.active){
+    if(e.key==='Escape'){e.preventDefault();exitChartPresentation()}
+    else if(e.key==='ArrowRight'){e.preventDefault();moveChartPresentation(1)}
+    else if(e.key==='ArrowLeft'){e.preventDefault();moveChartPresentation(-1)}
+    return;
+  }
+  if(e.key==='Escape'&&$('#modal .ov'))closeDetail();
+});
 
 /* ================= início ================= */
 migrateLegacyData();
