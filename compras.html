@@ -52,7 +52,7 @@ h3{font-size:15px;margin:0}
 .btn.pri:hover{filter:brightness(1.1)}
 .btn.bad{color:var(--bad);border-color:var(--bad)}
 .btn.sm{padding:3px 10px;font-size:13px}
-input[type=search],input[type=text],select{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:7px 10px;min-width:0}
+input[type=search],input[type=text],input[type=number],input[type=date],select{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:7px 10px;min-width:0}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .row.sb{justify-content:space-between}
 .grow{flex:1;min-width:180px}
@@ -67,6 +67,12 @@ input[type=search],input[type=text],select{background:var(--surface);border:1px 
 .tile .v.bad{color:var(--bad)}
 .tile .s{font-size:12px;color:var(--muted)}
 .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:16px;margin-bottom:16px}
+.chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:16px;margin-bottom:16px}
+.chart-panel{overflow:hidden}
+.chart-svg{display:block;width:100%;height:auto;min-height:230px}
+.chart-legend{display:flex;gap:8px 14px;flex-wrap:wrap;margin-top:8px}
+.chart-legend span{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
+.chart-legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
 .panel.flush{padding:0}
 .panel.flush>h2{padding:16px 16px 0}
@@ -180,7 +186,7 @@ const norm=s=>String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').toLow
 const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
 function toast(m){const t=$('#toast');t.innerHTML=`<div>${esc(m)}</div>`;clearTimeout(toast.t);toast.t=setTimeout(()=>t.innerHTML='',4200)}
 
-/* ================= definição dos 4 relatórios =================
+/* ================= definição dos relatórios =================
    campo: [chave, rótulo, tipo(k chave|t texto|n número|d data), nomes aceitos nos cabeçalhos, marca(l = campo de ligação)] */
 const DS={
  sc:{label:'Solicitações de compra',code:'SC1',hint:'Quem pediu o quê e quando.',fields:[
@@ -212,10 +218,14 @@ const DS={
   ['qtd','Quantidade','n',['c7_quant','quantidade','qtd','qtde']],
   ['preco','Preço unitário','n',['c7_preco','preco','preco unitario','valor unitario']],
   ['total','Valor total','n',['c7_total','total','valor total','vlr total']],
+  ['gross','Valor bruto','n',['valor bruto','total bruto','vlr bruto']],
+  ['taxes','Impostos','n',['impostos','valor impostos','total impostos','vlr impostos']],
+  ['net','Valor líquido','n',['valor liquido','total liquido','vlr liquido']],
   ['emissao','Data do pedido','d',['c7_emissao','emissao','data emissao','data pedido','data']],
   ['previsao','Previsão de entrega','d',['c7_datprf','previsao de entrega','previsao entrega','data entrega','dt entrega','prazo de entrega','data prevista','dat prf','entrega']],
   ['qtdEnt','Qtd. já entregue (opcional)','n',['c7_quje','qtd entregue','quantidade entregue','qtd recebida','entregue']],
-  ['comprador','Comprador','t',['c7_user','c7_comprad','comprador','usuario']]]},
+  ['comprador','Comprador','t',['c7_user','c7_comprad','comprador','usuario']],
+  ['payment','Condição de pagamento','t',['condicao pagamento','condicao de pagamento','forma pagamento','pagamento']]]},
  nf:{label:'Notas fiscais de entrada',code:'SD1',hint:'O que chegou. Liga com o pedido.',fields:[
   ['doc','Nº da nota fiscal','k',['d1_doc','nota fiscal','numero nf','num nf','nf','documento','numero da nota','nota','doc']],
   ['serie','Série','t',['d1_serie','serie']],
@@ -225,10 +235,19 @@ const DS={
   ['produto','Produto (código)','t',['d1_cod','produto','cod produto','codigo produto','codigo']],
   ['qtd','Quantidade','n',['d1_quant','quantidade','qtd','qtde']],
   ['total','Valor total','n',['d1_total','total','valor total','vlr total']],
-  ['emissao','Data de entrada','d',['d1_dtdigit','d1_emissao','data de entrada','data entrada','data recebimento','dt digitacao','data digitacao','emissao','data']]]}
+  ['emissao','Data de entrada','d',['d1_dtdigit','d1_emissao','data de entrada','data entrada','data recebimento','dt digitacao','data digitacao','emissao','data']]]},
+ apr:{label:'Aprovações de pedidos',code:'Aprovações',hint:'Status, data e aprovador para medir o tempo de aprovação.',fields:[
+  ['pedNum','Nº do pedido','k',['numero pedido','num pedido','n pedido','pedido','pedido de compra'],'l'],
+  ['status','Status da aprovação','t',['status aprovacao','status de aprovacao','situacao aprovacao','situacao','status']],
+  ['approvalDate','Data da aprovação','d',['data aprovacao','data de aprovacao','dt aprovacao','aprovacao']],
+  ['approver','Aprovador','t',['aprovador','usuario aprovador','responsavel aprovacao']]]},
+ fat:{label:'Faturamento',code:'Faturamento',hint:'Faturamento por documento e data para comparar com compras.',fields:[
+  ['doc','Nº do documento','k',['numero documento','documento','nota fiscal','numero nf','num nf','nf','doc']],
+  ['emissao','Data do faturamento','d',['data faturamento','data emissao','data emissao nf','data','emissao']],
+  ['total','Valor faturado','n',['valor faturado','valor total','total','vlr total','valor']]]}
 };
-const KEYS=['sc','cot','ped','nf'];
-const PK={sc:o=>o.num,cot:o=>o.num||o.scNum,ped:o=>o.num,nf:o=>o.doc};
+const KEYS=['sc','cot','ped','nf','apr','fat'];
+const PK={sc:o=>o.num,cot:o=>o.num||o.scNum,ped:o=>o.num,nf:o=>o.doc,apr:o=>o.pedNum,fat:o=>o.doc};
 
 /* ================= leitura de valores ================= */
 const keyOf=v=>{if(v==null||v==='')return '';let s=String(v).trim().replace(/\.0+$/,'');return s.replace(/^0+(?=.)/,'')};
@@ -249,13 +268,13 @@ function dateOf(v){
 }
 
 /* ================= estado ================= */
-let S={raw:{},map:{},meta:{},sample:false};   // persistido
+let S={raw:{},map:{},meta:{},categories:{},targets:{},savings:[],sample:false};   // persistido
 let integration={apiUrl:''};
 let D={sc:[],cot:[],ped:[],nf:[]};            // linhas normalizadas
 let BS={};
 let PAD={};                                    // estatística da normalização
 let M=null;                                   // modelo ligado (pedidos, SCs, fornecedores)
-const UI={view:'geral',period:'all',status:'todos',q:'',sort:'atraso',limit:100,confirm:false};
+const UI={view:'geral',period:'all',status:'todos',q:'',sort:'atraso',limit:100,category:'',buyer:'',confirm:false};
 
 function persist(){try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){UI.noSave=true}}
 function restore(){try{const r=localStorage.getItem(LS);if(r){const o=JSON.parse(r);if(o&&o.raw)return o}}catch(e){}return null}
@@ -283,6 +302,11 @@ function build(k){
     if(!PK[k](o)){skipped++;continue}
     if('total' in o&&!o.total&&o.qtd&&o.preco)o.total=o.qtd*o.preco;
     if('total' in o&&!o.total&&k==='cot'&&o.preco)o.total=o.preco;
+    if(k==='ped'){
+      o.gross=o.gross||o.total;
+      o.net=o.net||Math.max(0,o.gross-o.taxes);
+      o.total=o.total||o.gross;
+    }
     out.push(o);
   }
   D[k]=out;BS[k]={skipped,bad};
@@ -297,18 +321,27 @@ function buildModel(){
   const cotByNum=new Map(),cotBySc=new Map();
   for(const c of D.cot){if(c.scNum){(cotBySc.get(c.scNum)||cotBySc.set(c.scNum,[]).get(c.scNum)).push(c)}
     if(c.num){(cotByNum.get(c.num)||cotByNum.set(c.num,[]).get(c.num)).push(c)}}
-  const nfBy=new Map();
+  const nfBy=new Map(),approvalBy=new Map();
   for(const n of D.nf){if(!n.pedNum)continue;(nfBy.get(n.pedNum)||nfBy.set(n.pedNum,[]).get(n.pedNum)).push(n)}
+  for(const a of D.apr){if(!a.pedNum)continue;(approvalBy.get(a.pedNum)||approvalBy.set(a.pedNum,[]).get(a.pedNum)).push(a)}
   const pm=new Map();
   for(const r of D.ped){let p=pm.get(r.num);
-    if(!p){p={num:r.num,items:[],scNum:'',cotNum:'',fornecedor:'',comprador:'',emissao:'',previsao:'',total:0,qtd:0,qtdFile:0}; pm.set(r.num,p)}
-    p.items.push(r);p.total+=r.total;p.qtd+=r.qtd;p.qtdFile+=r.qtdEnt;
+    if(!p){p={num:r.num,items:[],scNum:'',cotNum:'',fornecedor:'',comprador:'',emissao:'',previsao:'',total:0,gross:0,taxes:0,net:0,qtd:0,qtdFile:0,payment:''}; pm.set(r.num,p)}
+    p.items.push(r);p.total+=r.total;p.gross+=r.gross;p.taxes+=r.taxes;p.net+=r.net;p.qtd+=r.qtd;p.qtdFile+=r.qtdEnt;
     p.scNum=p.scNum||r.scNum;p.cotNum=p.cotNum||r.cotNum;p.fornecedor=p.fornecedor||r.fornecedor;p.comprador=p.comprador||r.comprador;
+    p.payment=p.payment||r.payment;
     if(r.emissao&&(!p.emissao||r.emissao<p.emissao))p.emissao=r.emissao;
     if(r.previsao&&(!p.previsao||r.previsao>p.previsao))p.previsao=r.previsao}
   const peds=[...pm.values()];
   for(const p of peds){
     p.nfs=nfBy.get(p.num)||[];
+    p.approvals=approvalBy.get(p.num)||[];
+    const approvals=[...p.approvals].sort((a,b)=>(a.approvalDate||'').localeCompare(b.approvalDate||''));
+    const lastApproval=approvals[approvals.length-1];
+    p.approvalStatus=lastApproval?lastApproval.status:'';
+    p.approver=lastApproval?lastApproval.approver:'';
+    p.approvalDate=approvals.map(a=>a.approvalDate).filter(Boolean).pop()||'';
+    p.approvalDays=p.approvalDate&&p.emissao?diff(p.approvalDate,p.emissao):null;
     const nfQty=p.nfs.reduce((a,n)=>a+n.qtd,0);
     p.entregue=Math.max(nfQty,p.qtdFile);
     const dts=p.nfs.map(n=>n.emissao).filter(Boolean).sort();
@@ -330,7 +363,7 @@ function buildModel(){
   for(const s of scs){s.peds=pedBySc.get(s.num)||[];s.hasCot=cotBySc.has(s.num);s.recebida=s.peds.some(p=>p.entregue>0);s.idade=s.emissao?diff(T,s.emissao):null}
   const forn=new Map();
   for(const p of peds){const k=p.fornecedor||'(sem fornecedor)';let f=forn.get(k);if(!f){f={nome:k,peds:[]};forn.set(k,f)}f.peds.push(p)}
-  M={T,peds,pm,scs,scMap,cotBySc,cotByNum,nfBy,forn:[...forn.values()],pedBySc};
+  M={T,peds,pm,scs,scMap,cotBySc,cotByNum,nfBy,approvalBy,forn:[...forn.values()],pedBySc};
 }
 function rebuild(){KEYS.forEach(build);buildModel()}
 
@@ -371,7 +404,7 @@ async function loadFile(k,file){
   try{
     const t=await readFile(file);
     if(!t.headers.length||!t.rows.length){toast('O arquivo está vazio ou sem linhas de dados.');return}
-    if(S.sample){S={raw:{},map:{},meta:{},sample:false}}
+    if(S.sample){S={...S,raw:{},map:{},meta:{},sample:false}}
     S.raw[k]=t;S.map[k]=autoMap(t.headers,k);S.meta[k]={name:file.name,when:new Date().toISOString()};
     persist();rebuild();render();
     const got=Object.keys(S.map[k]).length;
@@ -409,10 +442,13 @@ function sampleData(){
    sc:{headers:['Nº SC','Item','Produto','Descrição','Quantidade','Emissão','Solicitante','Centro de Custo'],rows:sc},
    cot:{headers:['Nº Cotação','Nº SC','Fornecedor','Produto','Preço Unitário','Valor Total','Data Cotação','Nº Pedido'],rows:cot},
    ped:{headers:['Nº Pedido','Item','Nº SC','Nº Cotação','Fornecedor','Produto','Descrição','Quantidade','Preço Unitário','Valor Total','Emissão','Previsão de Entrega','Qtd. Entregue','Comprador'],rows:ped},
-   nf:{headers:['Nota Fiscal','Série','Nº Pedido','Item Pedido','Fornecedor','Produto','Quantidade','Valor Total','Data de Entrada'],rows:nfr}};
+   nf:{headers:['Nota Fiscal','Série','Nº Pedido','Item Pedido','Fornecedor','Produto','Quantidade','Valor Total','Data de Entrada'],rows:nfr},
+   apr:{headers:['Nº Pedido','Status da Aprovação','Data da Aprovação','Aprovador'],rows:[]},
+   fat:{headers:['Nº do Documento','Data do Faturamento','Valor Faturado'],rows:[]}};
 }
 function loadSample(){
-  const s=sampleData();S={raw:s,map:{},meta:{},sample:true};
+  const saved={categories:S.categories||{},targets:S.targets||{},savings:S.savings||[]};
+  const s=sampleData();S={...saved,raw:s,map:{},meta:{},sample:true};
   for(const k of KEYS){S.map[k]=autoMap(s[k].headers,k);S.meta[k]={name:'exemplo',when:new Date().toISOString()}}
   persist();rebuild();
 }
@@ -424,6 +460,9 @@ const hasData=()=>D.ped.length>0;
 const dn=(k,f,v)=>/^\d+$/.test(v||'')?v.padStart((PAD[k]&&PAD[k][f])||0,'0'):(v||'');
 const cutoff=()=>UI.period==='all'?'':addDays(M.T,-({'30':30,'90':90,'365':365}[UI.period]));
 const inPeriod=p=>{const c=cutoff();return !c||(p.emissao&&p.emissao>=c)};
+const categoryOf=product=>S.categories[product]||'Sem categoria';
+const availableCategories=()=>[...new Set(Object.values(S.categories).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+const availableBuyers=()=>[...new Set(M.peds.map(p=>p.comprador).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
 
 function noData(){return `<div class="panel"><div class="empty"><p><b>Nenhum pedido carregado ainda.</b></p><p>Carregue o relatório de pedidos de compra na aba Dados, ou veja o portal com dados de exemplo.</p><div class="row" style="justify-content:center"><button class="btn pri" data-a="view" data-v="dados">Ir para Dados</button><button class="btn" data-a="sample">Ver com dados de exemplo</button></div></div></div>`}
 
@@ -477,7 +516,10 @@ function vGeral(){
 
 function filteredPeds(){
   const q=norm(UI.q);let L=M.peds;
+  L=L.filter(inPeriod);
   if(UI.status!=='todos')L=L.filter(p=>p.status===UI.status);
+  if(UI.buyer)L=L.filter(p=>p.comprador===UI.buyer);
+  if(UI.category)L=L.filter(p=>p.items.some(i=>categoryOf(i.produto)===UI.category));
   if(q)L=L.filter(p=>norm([p.num,dn('ped','num',p.num),p.fornecedor,dn('sc','num',p.scNum),p.scNum,p.comprador,p.items.map(i=>i.produto+' '+i.desc).join(' '),p.nfs.map(n=>n.doc+' '+dn('nf','doc',n.doc)).join(' ')].join(' ')).includes(q));
   const rank={atrasado:0,parcial:1,aberto:2,entregue:3};
   const S2={atraso:(a,b)=>rank[a.status]-rank[b.status]||(a.previsao||'9').localeCompare(b.previsao||'9'),
@@ -487,16 +529,19 @@ function filteredPeds(){
 function pedTable(){
   const L=filteredPeds(),shown=L.slice(0,UI.limit);
   if(!L.length)return '<div class="empty">Nenhum pedido encontrado com esses filtros.</div>';
-  return `<div class="tw"><table><thead><tr><th>Pedido</th><th>Fornecedor</th><th>Emissão</th><th>Previsão</th><th class="r">Valor</th><th>Recebido</th><th>Situação</th></tr></thead><tbody>
-  ${shown.map(p=>`<tr class="go" data-a="open" data-id="${esc(p.num)}"><td class="mono nw">${esc(dn('ped','num',p.num))}</td><td class="cut" title="${esc(p.fornecedor)}">${esc(p.fornecedor||'—')}</td><td class="nw num">${fdate(p.emissao)}</td><td class="nw num">${fdate(p.previsao)}</td><td class="r nw num">${brl(p.total)}</td><td class="nw"><span class="mini"><i style="width:${p.pct}%"></i></span><span class="small num">${p.pct}%</span></td><td class="nw">${pill(p.status)}${p.status==='atrasado'?` <span class="small muted num">${p.atraso} d</span>`:''}</td></tr>`).join('')}
+  return `<div class="tw"><table><thead><tr><th>Pedido</th><th>Fornecedor</th><th>Emissão</th><th>Previsão</th><th class="r">Valor</th><th>Recebido</th><th>Situação</th><th>Aprovação</th></tr></thead><tbody>
+  ${shown.map(p=>`<tr class="go" data-a="open" data-id="${esc(p.num)}"><td class="mono nw">${esc(dn('ped','num',p.num))}</td><td class="cut" title="${esc(p.fornecedor)}">${esc(p.fornecedor||'—')}</td><td class="nw num">${fdate(p.emissao)}</td><td class="nw num">${fdate(p.previsao)}</td><td class="r nw num">${brl(p.total)}</td><td class="nw"><span class="mini"><i style="width:${p.pct}%"></i></span><span class="small num">${p.pct}%</span></td><td class="nw">${pill(p.status)}${p.status==='atrasado'?` <span class="small muted num">${p.atraso} d</span>`:''}</td><td class="nw">${p.approvalStatus?`<span class="tag">${esc(p.approvalStatus)}</span>`:'—'}</td></tr>`).join('')}
   </tbody></table></div>
   <div class="row sb small muted" style="padding:10px 12px"><span>Mostrando ${nf(shown.length)} de ${nf(L.length)} pedidos</span>${L.length>shown.length?`<button class="btn sm" data-a="more">Mostrar mais</button>`:''}</div>`;
 }
 function vPedidos(){
   if(!hasData())return `<h1>Acompanhamento</h1><p class="sub">Todos os pedidos e a situação de cada um.</p>`+noData();
-  const c={todos:M.peds.length};['atrasado','parcial','aberto','entregue'].forEach(s=>c[s]=M.peds.filter(p=>p.status===s).length);
+  const periodPeds=M.peds.filter(inPeriod),c={todos:periodPeds.length};['atrasado','parcial','aberto','entregue'].forEach(s=>c[s]=periodPeds.filter(p=>p.status===s).length);
   return `<h1>Acompanhamento</h1><p class="sub">Clique em um pedido para ver o caminho completo: solicitação, cotação, pedido e notas fiscais.</p>
   <div class="row" style="margin-bottom:12px"><input type="search" id="q" class="grow" placeholder="Buscar por pedido, fornecedor, produto, SC ou nota…" value="${esc(UI.q)}" aria-label="Buscar pedidos" autocomplete="off">
+   <select id="period" data-a="period" aria-label="Filtrar período">${[['all','Todo período'],['30','30 dias'],['90','90 dias'],['365','12 meses']].map(([v,l])=>`<option value="${v}"${UI.period===v?' selected':''}>${l}</option>`).join('')}</select>
+   <select id="buyer-filter" data-a="buyer-filter" aria-label="Filtrar por comprador"><option value="">Todos os compradores</option>${availableBuyers().map(b=>`<option value="${esc(b)}"${UI.buyer===b?' selected':''}>${esc(b)}</option>`).join('')}</select>
+   <select id="category-filter" data-a="category-filter" aria-label="Filtrar por categoria"><option value="">Todas as categorias</option>${availableCategories().map(c=>`<option value="${esc(c)}"${UI.category===c?' selected':''}>${esc(c)}</option>`).join('')}</select>
    <select id="sort" data-a="sort" aria-label="Ordenar"><option value="atraso"${UI.sort==='atraso'?' selected':''}>Mais urgentes primeiro</option><option value="previsao"${UI.sort==='previsao'?' selected':''}>Previsão de entrega</option><option value="recentes"${UI.sort==='recentes'?' selected':''}>Mais recentes</option><option value="valor"${UI.sort==='valor'?' selected':''}>Maior valor</option></select></div>
   <div class="chips" style="margin-bottom:14px">${[['todos','Todos'],['atrasado','Atrasados'],['aberto','Em aberto'],['parcial','Parciais'],['entregue','Entregues']].map(([k,l])=>`<button class="chip" data-a="status" data-s="${k}" aria-pressed="${UI.status===k}">${l}<b>${c[k]}</b></button>`).join('')}</div>
   <section class="panel flush" id="pt">${pedTable()}</section>`;
@@ -504,7 +549,7 @@ function vPedidos(){
 function vForn(){
   if(!hasData())return `<h1>Fornecedores</h1><p class="sub">Quanto se compra de cada um e como cumprem os prazos.</p>`+noData();
   const rows=M.forn.map(f=>{const P=f.peds.filter(inPeriod);const ent=P.filter(p=>p.noPrazo!==null);
-    return {n:f.nome,np:P.length,gasto:P.reduce((a,p)=>a+p.total,0),aberto:f.peds.filter(p=>p.status!=='entregue').length,atras:f.peds.filter(p=>p.status==='atrasado').length,
+    return {n:f.nome,np:P.length,gasto:P.reduce((a,p)=>a+p.total,0),aberto:P.filter(p=>p.status!=='entregue').length,atras:P.filter(p=>p.status==='atrasado').length,
       ot:ent.length?ent.filter(p=>p.noPrazo).length/ent.length:null,ne:ent.length,am:ent.length?avg(ent.map(p=>Math.max(0,p.atraso||0))):null}}).filter(r=>r.np>0||r.aberto>0).sort((a,b)=>b.gasto-a.gasto);
   const tot=rows.reduce((a,r)=>a+r.gasto,0)||1;
   return `<div class="row sb"><div><h1>Fornecedores</h1><p class="sub">Gasto e cumprimento de prazo no período selecionado.</p></div>
@@ -513,6 +558,230 @@ function vForn(){
   ${rows.map(r=>`<tr class="go" data-a="forn" data-n="${esc(r.n)}"><td class="cut" title="${esc(r.n)}">${esc(r.n)}</td><td class="r num">${r.np}</td><td class="r nw num">${brl(r.gasto)}</td><td class="nw"><span class="mini"><i style="background:var(--accent);width:${r.gasto/tot*100}%"></i></span><span class="small num">${nf(r.gasto/tot*100,1)}%</span></td><td class="r num">${r.aberto}</td><td class="r num">${r.atras?`<span class="pill p-atrasado">${r.atras}</span>`:'0'}</td><td class="r num">${r.ot==null?'—':Math.round(r.ot*100)+'%'}</td><td class="r num">${r.am==null?'—':r.am<.5?'no prazo':nf(r.am,1)+' d'}</td></tr>`).join('')}
   </tbody></table></div></section>
   <p class="small muted">Prazo e atraso consideram só pedidos já entregues com data de nota fiscal. Clique em um fornecedor para ver os pedidos dele.</p>`;
+}
+
+function productSpend(){
+  const products=new Map();
+  for(const p of M.peds.filter(inPeriod))for(const item of p.items){
+    const code=item.produto||'(sem código)',row=products.get(code)||{code,name:item.desc||code,category:categoryOf(code),spend:0,qty:0};
+    row.spend+=item.total||item.preco*item.qtd;row.qty+=item.qtd;
+    if(!row.name||row.name===code)row.name=item.desc||code;
+    row.category=categoryOf(code);products.set(code,row);
+  }
+  return [...products.values()].sort((a,b)=>b.spend-a.spend);
+}
+function abcRows(rows){
+  const sorted=[...rows].sort((a,b)=>b.spend-a.spend);
+  const total=sorted.reduce((sum,row)=>sum+row.spend,0);
+  let running=0;
+  return sorted.map(row=>{
+    const before=total?running/total:0;
+    running+=row.spend;
+    const cumulative=total?running/total:0;
+    return {...row,cumulative,group:before<.8?'A':before<.95?'B':'C'};
+  });
+}
+function vEstrategia(){
+  const products=productSpend(),suppliers=abcRows(M.forn.map(f=>({name:f.nome,spend:f.peds.filter(inPeriod).reduce((sum,p)=>sum+p.total,0)})).filter(x=>x.spend>0));
+  const abcProducts=abcRows(products.filter(x=>x.spend>0)),topProducts=products.slice(0,10);
+  const buyers=new Map();
+  for(const p of M.peds.filter(inPeriod)){const name=p.comprador||'Sem comprador';buyers.set(name,(buyers.get(name)||0)+p.total)}
+  const categories=new Map();
+  for(const item of products)if(item.category!=='Sem categoria')categories.set(item.category,(categories.get(item.category)||0)+item.spend);
+  const savings=(S.savings||[]).filter(x=>UI.period==='all'||(x.date&&x.date>=cutoff()));
+  const saved=savings.reduce((sum,x)=>sum+x.reference-x.final,0);
+  const reference=savings.reduce((sum,x)=>sum+x.reference,0);
+  const savingRate=reference?saved/reference*100:null;
+  const approved=M.peds.filter(p=>inPeriod(p)&&p.approvalStatus&&norm(p.approvalStatus).includes('aprov'));
+  const approvalDays=avg(approved.map(p=>p.approvalDays).filter(x=>x!=null&&x>=0));
+  const pending=M.peds.filter(p=>inPeriod(p)&&/pend|aguard|analise/.test(norm(p.approvalStatus))).length;
+  const onTime=M.peds.filter(p=>inPeriod(p)&&p.noPrazo!==null);
+  const otif=onTime.length?onTime.filter(p=>p.noPrazo).length/onTime.length*100:null;
+  const targets=S.targets||{};
+  const targetRow=(label,value,target,suffix,good)=>`<tr><td>${label}</td><td class="r num">${value==null?'—':nf(value,1)+suffix}</td><td class="r num">${target==null?'Não definida':nf(target,1)+suffix}</td><td>${value==null||target==null?'—':good(value,target)?'<span class="pill p-entregue">atingida</span>':'<span class="pill p-atrasado">abaixo da meta</span>'}</td></tr>`;
+  const monthly=new Map();
+  for(const p of M.peds.filter(inPeriod)){if(!p.emissao)continue;const row=monthly.get(p.emissao.slice(0,7))||{purchase:0,billing:0};row.purchase+=p.total;monthly.set(p.emissao.slice(0,7),row)}
+  for(const bill of D.fat){if(!bill.emissao||!inPeriod({emissao:bill.emissao}))continue;const row=monthly.get(bill.emissao.slice(0,7))||{purchase:0,billing:0};row.billing+=bill.total;monthly.set(bill.emissao.slice(0,7),row)}
+  const months=[...monthly.entries()].sort().slice(-12);
+  const productOptions=[...new Map(M.peds.flatMap(p=>p.items).filter(i=>i.produto).map(i=>[i.produto,{code:i.produto,name:i.desc||i.produto}])).values()];
+  const abcTable=rows=>rows.length?`<div class="tw"><table><thead><tr><th>Item</th><th>Categoria</th><th class="r">Gasto</th><th class="r">Acumulado</th><th>Classe</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.name||r.code)}</td><td>${esc(r.category||'')}</td><td class="r nw num">${brl(r.spend)}</td><td class="r num">${nf(r.cumulative*100,1)}%</td><td><b>${r.group}</b></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Sem compras no período selecionado.</div>';
+  return `<div class="row sb"><div><h1>Compras estratégicas</h1><p class="sub">Saving, classificação ABC, categorias, metas e comparação com faturamento.</p></div>
+   <label class="row small muted">Período <select id="period" data-a="period">${[['all','Tudo'],['30','30 dias'],['90','90 dias'],['365','12 meses']].map(([v,l])=>`<option value="${v}"${UI.period===v?' selected':''}>${l}</option>`).join('')}</select></label></div>
+  <div class="tiles">
+   <div class="tile"><div class="k">Saving registrado</div><div class="v">${brl(saved)}</div><div class="s">${savingRate==null?'Cadastre referências e valores fechados':nf(savingRate,1)+'% sobre a referência'}</div></div>
+   <div class="tile"><div class="k">Negociações registradas</div><div class="v">${nf(savings.length)}</div><div class="s">no período selecionado</div></div>
+   <div class="tile"><div class="k">Aprovação</div><div class="v">${approvalDays==null?'—':nf(approvalDays,1)+' d'}</div><div class="s">${D.apr.length?`${nf(pending)} pendentes no relatório`:'importe o relatório de aprovações'}</div></div>
+   <div class="tile"><div class="k">OTIF</div><div class="v">${otif==null?'—':nf(otif,1)+'%'}</div><div class="s">${onTime.length} pedidos entregues avaliáveis</div></div>
+  </div>
+  <div class="cols">
+   <section class="panel"><h2>Metas por indicador</h2><div class="tw"><table><thead><tr><th>Indicador</th><th class="r">Realizado</th><th class="r">Meta</th><th>Status</th></tr></thead><tbody>
+    ${targetRow('OTIF',otif,targets.otif,'% ',(v,t)=>v>=t)}
+    ${targetRow('Saving sobre referência',savingRate,targets.saving,'% ',(v,t)=>v>=t)}
+    ${targetRow('Tempo médio de aprovação',approvalDays,targets.approvalDays,' dias',(v,t)=>v<=t)}
+   </tbody></table></div>
+    <div class="row" style="margin-top:12px"><label class="small">Meta OTIF (%) <input type="number" id="target-otif" min="0" max="100" step="0.1" value="${esc(targets.otif??'')}"></label><label class="small">Meta saving (%) <input type="number" id="target-saving" step="0.1" value="${esc(targets.saving??'')}"></label><label class="small">Meta aprovação (dias) <input type="number" id="target-approval" min="0" step="0.1" value="${esc(targets.approvalDays??'')}"></label><button class="btn pri" data-a="save-targets">Salvar metas</button></div>
+   </section>
+   <section class="panel"><h2>Classificação ABC de fornecedores</h2>${abcTable(suppliers.map(s=>({...s,name:s.name,category:'Fornecedor'})))}</section>
+  </div>
+  <div class="cols">
+   <section class="panel"><h2>Curva ABC de produtos</h2>${abcTable(abcProducts)}</section>
+   <section class="panel"><h2>Top 10 produtos</h2>${topProducts.length?`<div class="tw"><table><thead><tr><th>Produto</th><th>Categoria</th><th class="r">Quantidade</th><th class="r">Gasto</th></tr></thead><tbody>${topProducts.map(p=>`<tr><td>${esc(p.name)} <span class="small muted mono">${esc(p.code)}</span></td><td>${esc(p.category)}</td><td class="r num">${nf(p.qty,2)}</td><td class="r nw num">${brl(p.spend)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Sem compras no período selecionado.</div>'}</section>
+  </div>
+  <div class="cols">
+   <section class="panel"><h2>Gasto por categoria</h2>${categories.size?`<div class="tw"><table><thead><tr><th>Categoria</th><th class="r">Gasto</th></tr></thead><tbody>${[...categories].sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<tr><td>${esc(c)}</td><td class="r nw num">${brl(v)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Classifique produtos para ver a análise por categoria.</div>'}</section>
+   <section class="panel"><h2>Gasto por comprador</h2>${buyers.size?`<div class="tw"><table><thead><tr><th>Comprador</th><th class="r">Gasto</th></tr></thead><tbody>${[...buyers].sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<tr><td>${esc(n)}</td><td class="r nw num">${brl(v)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Não há comprador informado nos pedidos carregados.</div>'}</section>
+  </div>
+  <section class="panel"><h2>Compras x faturamento</h2>${D.fat.length?`<div class="tw"><table><thead><tr><th>Mês</th><th class="r">Compras emitidas</th><th class="r">Faturamento</th><th class="r">Faturamento / compras</th></tr></thead><tbody>${months.map(([m,v])=>`<tr><td>${m}</td><td class="r nw num">${brl(v.purchase)}</td><td class="r nw num">${brl(v.billing)}</td><td class="r num">${v.purchase?nf(v.billing/v.purchase*100,1)+'%':'—'}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Carregue o relatório de faturamento na aba Dados para habilitar esta comparação.</div>'}</section>
+  <div class="cols">
+   <section class="panel"><h2>Classificar produtos</h2><p class="small muted">A categoria é salva neste navegador e aplicada a todos os itens com o mesmo código.</p>
+    <div class="row"><select id="category-product" aria-label="Produto">${productOptions.map(p=>`<option value="${esc(p.code)}">${esc(p.name)} (${esc(p.code)})</option>`).join('')}</select><input id="category-name" type="text" placeholder="Categoria ou família" value=""><button class="btn pri" data-a="save-category" ${productOptions.length?'':'disabled'}>Salvar categoria</button></div>
+    ${Object.keys(S.categories).length?`<div class="tw" style="margin-top:12px"><table><thead><tr><th>Produto</th><th>Categoria</th><th></th></tr></thead><tbody>${Object.entries(S.categories).sort((a,b)=>a[0].localeCompare(b[0])).map(([code,c])=>`<tr><td class="mono">${esc(code)}</td><td>${esc(c)}</td><td class="r"><button class="btn sm" data-a="remove-category" data-code="${esc(code)}">Remover</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="small muted">Nenhuma categoria cadastrada.</p>'}
+   </section>
+   <section class="panel"><h2>Registrar saving</h2><p class="small muted">Informe preço de referência (ex.: primeira cotação) e valor fechado. O saving pode ser negativo.</p>
+    <div class="row"><label class="small">Data<input type="date" id="saving-date" value="${today()}"></label><label class="small">Pedido<input id="saving-order" type="text" placeholder="Nº do pedido"></label><label class="small">Fornecedor<input id="saving-supplier" type="text" placeholder="Fornecedor"></label><label class="small">Categoria<input id="saving-category" type="text" placeholder="Categoria"></label><label class="small">Comprador<input id="saving-buyer" type="text" placeholder="Comprador"></label><label class="small">Referência (R$)<input id="saving-reference" type="number" min="0" step="0.01"></label><label class="small">Fechado (R$)<input id="saving-final" type="number" min="0" step="0.01"></label><button class="btn pri" data-a="save-saving">Registrar</button></div>
+    ${savings.length?`<div class="tw" style="margin-top:12px"><table><thead><tr><th>Data</th><th>Pedido</th><th>Fornecedor</th><th>Categoria</th><th>Comprador</th><th class="r">Saving</th><th></th></tr></thead><tbody>${savings.map(s=>`<tr><td>${fdate(s.date)}</td><td>${esc(s.order||'—')}</td><td>${esc(s.supplier||'—')}</td><td>${esc(s.category||'—')}</td><td>${esc(s.buyer||'—')}</td><td class="r nw num">${brl(s.reference-s.final)}</td><td class="r"><button class="btn sm" data-a="remove-saving" data-id="${esc(s.id)}">Remover</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="small muted">Nenhum saving registrado neste período.</p>'}
+   </section>
+  </div>`;
+}
+
+const CHART_COLORS=['#0f6b5c','#4d91c6','#d58b1f','#b34e60','#8064a2','#4a9c8a','#8a9b35','#d06b35'];
+const CHART_STATUS={atrasado:'#b3261e',aberto:'#4d91c6',parcial:'#d58b1f',entregue:'#1b7f4b'};
+const svgChart=content=>`<svg class="chart-svg" viewBox="0 0 640 280" role="img" aria-label="Gráfico de compras">${content}</svg>`;
+const chartPanel=(title,description,chart)=>`<section class="panel chart-panel"><h2>${title}</h2><p class="small muted">${description}</p>${chart}</section>`;
+const chartEmpty=message=>`<div class="empty">${message}</div>`;
+const monthLabel=key=>`${MES[Number(key.slice(5,7))-1]}/${key.slice(2,4)}`;
+function chartMonthly(){
+  const months=new Map();
+  for(const p of M.peds.filter(inPeriod)){if(!p.emissao)continue;const key=p.emissao.slice(0,7);months.set(key,(months.get(key)||0)+p.total)}
+  return [...months.entries()].sort().slice(-12).map(([label,value])=>({label:monthLabel(label),value}));
+}
+function chartSvgColumns(rows,color='var(--accent)',format=brl){
+  if(!rows.length)return chartEmpty('Sem pedidos com data no período.');
+  const max=Math.max(1,...rows.map(r=>r.value)),left=48,bottom=232,plot=550,step=plot/rows.length,w=Math.min(34,step*.58);
+  const bars=rows.map((r,i)=>{const h=r.value/max*170,x=left+i*step+(step-w)/2,y=bottom-h;return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${color}"><title>${esc(r.label)}: ${format(r.value)}</title></rect><text x="${x+w/2}" y="251" text-anchor="middle" fill="var(--muted)" font-size="11">${esc(r.label)}</text>`}).join('');
+  return svgChart(`<path d="M48 232H602" stroke="var(--line)"/>${bars}`);
+}
+function chartSvgLine(rows,color='var(--accent)',area=false){
+  if(!rows.length)return chartEmpty('Sem pedidos com data no período.');
+  const max=Math.max(1,...rows.map(r=>r.value)),min=Math.min(0,...rows.map(r=>r.value)),span=max-min||1,left=54,step=540/Math.max(1,rows.length-1);
+  const pts=rows.map((r,i)=>`${left+i*step},${218-(r.value-min)/span*170}`).join(' ');
+  const marks=rows.map((r,i)=>`<circle cx="${left+i*step}" cy="${218-(r.value-min)/span*170}" r="4" fill="${color}"><title>${esc(r.label)}: ${brl(r.value)}</title></circle><text x="${left+i*step}" y="248" text-anchor="middle" fill="var(--muted)" font-size="11">${esc(r.label)}</text>`).join('');
+  return svgChart(`${area?`<polygon points="${left},218 ${pts} ${left+(rows.length-1)*step},218" fill="${color}" opacity=".16"/>`:''}<path d="M54 218H602" stroke="var(--line)"/><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>${marks}`);
+}
+function chartSvgHorizontal(rows,color='var(--accent)',format=brlC){
+  if(!rows.length)return chartEmpty('Sem dados para comparar.');
+  const max=Math.max(1,...rows.map(r=>r.value)),top=10,gap=Math.min(34,220/rows.length);
+  return svgChart(rows.slice(0,7).map((r,i)=>{const y=top+i*gap,w=r.value/max*390;return `<text x="8" y="${y+17}" fill="var(--ink)" font-size="12">${esc(r.label.slice(0,24))}</text><rect x="205" y="${y+3}" width="${w}" height="17" rx="3" fill="${color}"><title>${esc(r.label)}: ${format(r.value)}</title></rect><text x="${210+w}" y="${y+17}" fill="var(--muted)" font-size="11">${format(r.value)}</text>`}).join(''));
+}
+function chartSvgPie(rows,donut=false){
+  const data=rows.filter(r=>r.value>0),total=data.reduce((sum,r)=>sum+r.value,0);
+  if(!total)return chartEmpty('Sem dados para distribuir.');
+  let angle=-Math.PI/2;
+  const slices=data.map((r,i)=>{
+    const sweep=r.value/total*Math.PI*2,start=angle,end=angle+sweep;angle=end;
+    const x1=170+115*Math.cos(start),y1=135+115*Math.sin(start),x2=170+115*Math.cos(end),y2=135+115*Math.sin(end);
+    const path=`M170 135 L${x1} ${y1} A115 115 0 ${sweep>Math.PI?1:0} 1 ${x2} ${y2} Z`;
+    const color=CHART_COLORS[i%CHART_COLORS.length];
+    return `<path d="${path}" fill="${color}" stroke="var(--surface)" stroke-width="2"><title>${esc(r.label)}: ${nf(r.value/total*100,1)}%</title></path>${donut?'':`<text x="${170+74*Math.cos(start+sweep/2)}" y="${139+74*Math.sin(start+sweep/2)}" fill="#fff" text-anchor="middle" font-size="11">${nf(r.value/total*100)}%</text>`}`;
+  }).join('');
+  const ring=donut?'<circle cx="170" cy="135" r="62" fill="var(--surface)"/>':'';
+  const legend=data.map((r,i)=>`<span><i style="background:${CHART_COLORS[i%CHART_COLORS.length]}"></i>${esc(r.label)} · ${nf(r.value)}</span>`).join('');
+  return `${svgChart(`${slices}${ring}${donut?`<text x="170" y="131" text-anchor="middle" fill="var(--ink)" font-size="18" font-weight="600">${brlC(total)}</text><text x="170" y="151" text-anchor="middle" fill="var(--muted)" font-size="11">total</text>`:''}`)}<div class="chart-legend">${legend}</div>`;
+}
+function chartSvgStacked(rows,series){
+  if(!rows.length)return chartEmpty('Sem pedidos com data no período.');
+  const max=Math.max(1,...rows.map(r=>series.reduce((sum,s)=>sum+r[s.key],0))),step=550/rows.length,w=Math.min(36,step*.6);
+  const bars=rows.map((r,i)=>{let y=232;const x=48+i*step+(step-w)/2;const parts=series.map(s=>{const h=r[s.key]/max*180;y-=h;return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${s.color}"><title>${esc(r.label)} · ${s.label}: ${r[s.key]}</title></rect>`}).join('');return `${parts}<text x="${x+w/2}" y="250" text-anchor="middle" fill="var(--muted)" font-size="11">${esc(r.label)}</text>`}).join('');
+  return `${svgChart(`<path d="M48 232H602" stroke="var(--line)"/>${bars}`)}<div class="chart-legend">${series.map(s=>`<span><i style="background:${s.color}"></i>${s.label}</span>`).join('')}</div>`;
+}
+function chartSvgFunnel(rows){
+  if(!rows.length||!rows[0].value)return chartEmpty('Carregue SC, cotações e pedidos para visualizar o fluxo.');
+  const max=rows[0].value;
+  return svgChart(rows.map((r,i)=>{const y=12+i*62,w=500*r.value/max,x=70+(500-w)/2,color=CHART_COLORS[i%CHART_COLORS.length];return `<path d="M${x} ${y}H${x+w}L${x+w-15} ${y+48}H${x+15}Z" fill="${color}" opacity=".9"><title>${esc(r.label)}: ${r.value}</title></path><text x="320" y="${y+22}" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">${esc(r.label)} · ${nf(r.value)}</text><text x="320" y="${y+40}" text-anchor="middle" fill="#fff" font-size="11">${nf(r.value/max*100)}% da primeira etapa</text>`}).join(''));
+}
+function chartSvgScatter(rows){
+  const data=rows.filter(r=>r.x!=null&&r.y>0);
+  if(!data.length)return chartEmpty('São necessários pedidos com valor e ciclo SC→pedido.');
+  const mx=Math.max(1,...data.map(r=>r.x)),my=Math.max(1,...data.map(r=>r.y));
+  const marks=data.map(r=>{const x=56+r.x/mx*520,y=220-r.y/my*185;return `<circle cx="${x}" cy="${y}" r="5" fill="${CHART_COLORS[0]}" opacity=".7"><title>${esc(r.label)} · ciclo ${r.x} dias · ${brl(r.y)}</title></circle>`}).join('');
+  return svgChart(`<path d="M56 220H600M56 25V220" fill="none" stroke="var(--line)"/><text x="320" y="258" text-anchor="middle" fill="var(--muted)" font-size="12">Ciclo solicitação → pedido (dias)</text><text transform="translate(16 128) rotate(-90)" text-anchor="middle" fill="var(--muted)" font-size="12">Valor do pedido</text>${marks}`);
+}
+function chartSvgHeatmap(rows){
+  if(!rows.length)return chartEmpty('Sem dados com categoria e comprador.');
+  const buyers=[...new Set(rows.map(r=>r.buyer))].slice(0,6),cats=[...new Set(rows.map(r=>r.category))].slice(0,7),max=Math.max(1,...rows.map(r=>r.value));
+  const cells=cats.map((cat,ci)=>`<text x="145" y="${52+ci*28}" text-anchor="end" fill="var(--ink)" font-size="11">${esc(cat.slice(0,18))}</text>${buyers.map((buyer,bi)=>{const val=rows.find(r=>r.category===cat&&r.buyer===buyer)?.value||0;const x=160+bi*68,y=34+ci*28;return `<rect x="${x}" y="${y}" width="62" height="24" rx="3" fill="${CHART_COLORS[0]}" opacity="${val?(.15+val/max*.8):.05}"><title>${esc(cat)} · ${esc(buyer)}: ${brl(val)}</title></rect>${val?`<text x="${x+31}" y="${y+16}" text-anchor="middle" fill="var(--ink)" font-size="9">${brlC(val)}</text>`:''}`}).join('')}`).join('');
+  const labels=buyers.map((b,i)=>`<text transform="translate(${191+i*68} 24) rotate(-35)" text-anchor="start" fill="var(--muted)" font-size="10">${esc(b.slice(0,12))}</text>`).join('');
+  return svgChart(`${labels}${cells}`);
+}
+function chartSvgHistogram(values){
+  if(!values.length)return chartEmpty('Não há lead time de entrega calculável.');
+  const max=Math.max(...values),bins=Array.from({length:6},(_,i)=>({label:`${Math.floor(max*i/6)}–${Math.ceil(max*(i+1)/6)} d`,value:0}));
+  values.forEach(v=>{const i=Math.min(5,Math.floor(v/(max||1)*6));bins[i].value++});
+  return chartSvgColumns(bins,'#8064a2',nf);
+}
+function chartSvgRadar(rows){
+  if(!rows.length)return chartEmpty('Sem fornecedores com entregas avaliáveis.');
+  const axes=['No prazo','Recebido','Gasto relativo'],cx=300,cy=140,rad=90;
+  const grid=[.33,.66,1].map(scale=>`<polygon points="${axes.map((_,i)=>{const a=-Math.PI/2+i*2*Math.PI/axes.length;return `${cx+rad*scale*Math.cos(a)},${cy+rad*scale*Math.sin(a)}`}).join(' ')}" fill="none" stroke="var(--line)"/>`).join('');
+  const axis=axes.map((label,i)=>{const a=-Math.PI/2+i*2*Math.PI/axes.length;return `<line x1="${cx}" y1="${cy}" x2="${cx+rad*Math.cos(a)}" y2="${cy+rad*Math.sin(a)}" stroke="var(--line)"/><text x="${cx+115*Math.cos(a)}" y="${cy+115*Math.sin(a)}" text-anchor="middle" fill="var(--muted)" font-size="11">${label}</text>`}).join('');
+  const plots=rows.map((r,ri)=>`<polygon points="${r.values.map((v,i)=>{const a=-Math.PI/2+i*2*Math.PI/axes.length;return `${cx+rad*v*Math.cos(a)},${cy+rad*v*Math.sin(a)}`}).join(' ')}" fill="${CHART_COLORS[ri%CHART_COLORS.length]}" fill-opacity=".12" stroke="${CHART_COLORS[ri%CHART_COLORS.length]}" stroke-width="2"><title>${esc(r.name)}</title></polygon>`).join('');
+  const legend=rows.map((r,i)=>`<span><i style="background:${CHART_COLORS[i%CHART_COLORS.length]}"></i>${esc(r.name)}</span>`).join('');
+  return `${svgChart(`${grid}${axis}${plots}`)}<div class="chart-legend">${legend}</div>`;
+}
+function chartSvgCombo(rows){
+  if(!rows.length)return chartEmpty('Sem compras ou faturamento no período.');
+  const max=Math.max(1,...rows.flatMap(r=>[r.purchase,r.billing])),step=550/rows.length,w=Math.min(18,step*.32);
+  const bars=rows.map((r,i)=>{const x=48+i*step+step/2,ph=r.purchase/max*170,bh=r.billing/max*170;return `<rect x="${x-w-1}" y="${220-ph}" width="${w}" height="${ph}" fill="#0f6b5c"><title>${esc(r.label)} compras: ${brl(r.purchase)}</title></rect><rect x="${x+1}" y="${220-bh}" width="${w}" height="${bh}" fill="#4d91c6"><title>${esc(r.label)} faturamento: ${brl(r.billing)}</title></rect><text x="${x}" y="245" text-anchor="middle" fill="var(--muted)" font-size="11">${esc(r.label)}</text>`}).join('');
+  return `${svgChart(`<path d="M48 220H602" stroke="var(--line)"/>${bars}`)}<div class="chart-legend"><span><i style="background:#0f6b5c"></i>Compras</span><span><i style="background:#4d91c6"></i>Faturamento</span></div>`;
+}
+function vGraficos(){
+  if(!hasData())return `<h1>Gráficos</h1><p class="sub">Visualizações da operação de compras.</p>${noData()}`;
+  const peds=M.peds.filter(inPeriod),months=chartMonthly();
+  let cumulative=0;
+  const cumulativeMonths=months.map(row=>{cumulative+=row.value;return {...row,value:cumulative}});
+  const suppliers=M.forn.map(f=>({label:f.nome,value:f.peds.filter(inPeriod).reduce((sum,p)=>sum+p.total,0)})).filter(r=>r.value>0).sort((a,b)=>b.value-a.value);
+  const statusRows=['atrasado','aberto','parcial','entregue'].map(s=>({label:ST[s],value:peds.filter(p=>p.status===s).length}));
+  const monthlyStatus=[...new Set(peds.map(p=>p.emissao&&p.emissao.slice(0,7)).filter(Boolean))].sort().slice(-8).map(key=>{
+    const group=peds.filter(p=>p.emissao&&p.emissao.slice(0,7)===key);
+    return {label:monthLabel(key),atrasado:group.filter(p=>p.status==='atrasado').length,aberto:group.filter(p=>p.status==='aberto').length,parcial:group.filter(p=>p.status==='parcial').length,entregue:group.filter(p=>p.status==='entregue').length};
+  });
+  const flow=[{label:'Solicitações',value:M.scs.length},{label:'Cotações',value:M.scs.filter(s=>s.hasCot).length},{label:'Pedidos',value:M.scs.filter(s=>s.peds.length).length},{label:'Recebidos',value:M.scs.filter(s=>s.recebida).length}];
+  const buyers=[...new Set(peds.map(p=>p.comprador||'Sem comprador'))];
+  const categories=availableCategories();
+  const heat=[];
+  for(const p of peds)for(const item of p.items){const category=categoryOf(item.produto),buyer=p.comprador||'Sem comprador';if(category==='Sem categoria')continue;const value=item.total||item.preco*item.qtd;const row=heat.find(x=>x.category===category&&x.buyer===buyer);if(row)row.value+=value;else heat.push({category,buyer,value})}
+  const leadTimes=peds.map(p=>p.lead).filter(x=>x!=null&&x>=0);
+  const radar=M.forn.map(f=>{const orders=f.peds.filter(inPeriod),delivered=orders.filter(p=>p.noPrazo!==null),completed=orders.filter(p=>p.status==='entregue');return {name:f.nome,spend:orders.reduce((sum,p)=>sum+p.total,0),values:[delivered.length?delivered.filter(p=>p.noPrazo).length/delivered.length:0,orders.length?completed.length/orders.length:0]}}).filter(x=>x.spend>0).sort((a,b)=>b.spend-a.spend).slice(0,4);
+  const maxSpend=Math.max(1,...radar.map(r=>r.spend));radar.forEach(r=>r.values.push(r.spend/maxSpend));
+  const billingMap=new Map();
+  for(const p of peds)if(p.emissao){const key=p.emissao.slice(0,7),row=billingMap.get(key)||{purchase:0,billing:0};row.purchase+=p.total;billingMap.set(key,row)}
+  for(const bill of D.fat)if(bill.emissao&&inPeriod({emissao:bill.emissao})){const key=bill.emissao.slice(0,7),row=billingMap.get(key)||{purchase:0,billing:0};row.billing+=bill.total;billingMap.set(key,row)}
+  const billingRows=[...billingMap.entries()].sort().slice(-12).map(([key,value])=>({label:monthLabel(key),...value}));
+  const paymentMap=new Map();for(const p of peds){const key=p.payment||'Não informado';paymentMap.set(key,(paymentMap.get(key)||0)+p.total)}
+  const approvalMap=new Map();for(const p of peds)if(p.approver&&p.approvalDays!=null&&p.approvalDays>=0){const row=approvalMap.get(p.approver)||{sum:0,count:0};row.sum+=p.approvalDays;row.count++;approvalMap.set(p.approver,row)}
+  const approvals=[...approvalMap].map(([label,r])=>({label,value:r.sum/r.count})).sort((a,b)=>b.value-a.value);
+  const taxRows=[{label:'Bruto',value:peds.reduce((sum,p)=>sum+p.gross,0)},{label:'Impostos',value:peds.reduce((sum,p)=>sum+p.taxes,0)},{label:'Líquido',value:peds.reduce((sum,p)=>sum+p.net,0)}];
+  const funnelChart=chartSvgFunnel(flow);
+  return `<div class="row sb"><div><h1>Gráficos</h1><p class="sub">12 visualizações da operação. Os gráficos usam o período selecionado e os dados carregados neste navegador.</p></div>
+   <label class="row small muted">Período <select id="period" data-a="period">${[['all','Tudo'],['30','30 dias'],['90','90 dias'],['365','12 meses']].map(([v,l])=>`<option value="${v}"${UI.period===v?' selected':''}>${l}</option>`).join('')}</select></label></div>
+  <div class="chart-grid">
+   ${chartPanel('1. Gastos por mês · colunas','Valor total dos pedidos por mês.',chartSvgColumns(months))}
+   ${chartPanel('2. Evolução dos gastos · linha','Tendência mensal dos valores de compra.',chartSvgLine(months))}
+   ${chartPanel('3. Gastos acumulados · área','Evolução do valor acumulado dos pedidos ao longo dos meses.',chartSvgLine(cumulativeMonths,'#4d91c6',true))}
+   ${chartPanel('4. Gastos por fornecedor · barras','Fornecedores com maior valor comprado.',chartSvgHorizontal(suppliers))}
+   ${chartPanel('5. Participação dos fornecedores · rosca','Distribuição do gasto entre os principais fornecedores.',chartSvgPie(suppliers.slice(0,6),true))}
+   ${chartPanel('6. Pedidos por situação · pizza','Distribuição de pedidos atrasados, abertos, parciais e entregues.',chartSvgPie(statusRows))}
+   ${chartPanel('7. Situação mensal · colunas empilhadas','Quantidade de pedidos por situação e mês de emissão.',chartSvgStacked(monthlyStatus,['entregue','parcial','aberto','atrasado'].map(key=>({key,label:ST[key],color:CHART_STATUS[key]}))))}
+   ${chartPanel('8. Fluxo de compras · funil','Solicitações que avançaram para cotação, pedido e recebimento.',funnelChart)}
+   ${chartPanel('9. Ciclo × valor do pedido · dispersão','Cada ponto representa pedido com solicitação ligada e valor disponível.',chartSvgScatter(peds.map(p=>({label:dn('ped','num',p.num),x:p.ciclo,y:p.total}))))}
+   ${chartPanel('10. Gasto por categoria e comprador · mapa de calor','Intensidade de gasto nos itens categorizados.',buyers.length&&categories.length?chartSvgHeatmap(heat):chartEmpty('Cadastre categorias de produto na aba Estratégia para formar o mapa.'))}
+   ${chartPanel('11. Lead time de entrega · histograma','Frequência de pedidos por faixa de dias até o primeiro recebimento.',chartSvgHistogram(leadTimes))}
+   ${chartPanel('12. Perfil de fornecedores · radar','Compara pontualidade, pedidos concluídos e gasto relativo entre os principais fornecedores.',chartSvgRadar(radar))}
+   ${chartPanel('13. Compras × faturamento · colunas agrupadas','Comparação mensal; faturamento depende do relatório complementar.',D.fat.length?chartSvgCombo(billingRows):chartEmpty('Importe o relatório de faturamento na aba Dados.'))}
+   ${chartPanel('14. Condição de pagamento · barras','Valor comprado por condição informada nos pedidos.',chartSvgHorizontal([...paymentMap].map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value),'#8064a2'))}
+   ${chartPanel('15. Aprovação por responsável · barras','Tempo médio entre emissão do pedido e aprovação.',D.apr.length?chartSvgHorizontal(approvals,'#d58b1f',v=>`${nf(v,1)} dias`):chartEmpty('Importe o relatório de aprovações na aba Dados.'))}
+   ${chartPanel('16. Bruto, impostos e líquido · barras','Composição dos valores extraídos dos pedidos.',chartSvgColumns(taxRows,'#4d91c6'))}
+  </div>`;
 }
 
 function qualityList(){
@@ -524,6 +793,8 @@ function qualityList(){
   if(!D.nf.length)add('w','Sem notas fiscais carregadas: a situação de entrega só será calculada se o relatório de pedidos trouxer a quantidade entregue.');
   else{const orf=D.nf.filter(n=>!n.pedNum||!M.pm.has(n.pedNum)).length;add(orf?'w':'',orf?`${orf} notas fiscais sem pedido correspondente (não entram nas entregas).`:'Todas as notas fiscais ligam com um pedido.')}
   if(D.cot.length){const o=D.cot.filter(c=>c.scNum&&D.sc.length&&!M.scMap.has(c.scNum)).length;if(o)add('w',`${o} cotações com solicitação não encontrada.`)}
+  if(!D.apr.length)add('w','Sem relatório de aprovações: o status, o aprovador e o tempo de aprovação das OCs não podem ser calculados.');
+  if(!D.fat.length)add('w','Sem relatório de faturamento: a comparação entre compras e faturamento não está disponível.');
   const sp=M.peds.filter(p=>!p.previsao).length;add(sp?'b':'',sp?`${sp} pedidos sem previsão de entrega: não dá para saber se estão atrasados.`:'Todos os pedidos têm previsão de entrega.');
   KEYS.forEach(k=>{const b=BS[k]||{};if(b.bad)add('w',`${DS[k].label}: ${b.bad} datas não reconhecidas.`);if(b.skipped)add('w',`${DS[k].label}: ${b.skipped} linhas ignoradas por não terem o número principal.`)});
   return L.join('');
@@ -535,7 +806,7 @@ function vDados(){
       ${raw?`<div class="small muted" style="margin-top:8px">${S.sample?'Dados de exemplo':esc(mt&&mt.name||'arquivo')} · <b>${nf(raw.rows.length)}</b> linhas · ${Object.keys(m).length} de ${d.fields.length} colunas reconhecidas</div>
       <details><summary>Conferir colunas</summary><div class="map">${d.fields.map(f=>`<label><span>${esc(f[1])}${f[4]?' <span class="lk">· liga</span>':''}</span><select data-a="map" data-k="${k}" data-f="${f[0]}"><option value="">— não usar —</option>${raw.headers.map((h,i)=>`<option value="${i}"${m[f[0]]===i?' selected':''}>${esc(h)}</option>`).join('')}</select></label>`).join('')}</div></details>`
       :`<div class="small muted" style="margin-top:8px">Aceita Excel (.xlsx, .xls) e CSV exportados do Protheus.</div>`}</section>`};
-  return `<h1>Dados</h1><p class="sub">Carregue os relatórios exportados do Protheus. Eles ficam só neste navegador. Os campos marcados com “liga” são os números que conectam um relatório ao outro.</p>
+  return `<h1>Dados</h1><p class="sub">Carregue os relatórios exportados do Protheus e as fontes complementares de aprovação e faturamento. Eles ficam só neste navegador. Os campos marcados com “liga” conectam os relatórios.</p>
   <div class="ds">${KEYS.map(dsCard).join('')}
   <section class="panel"><h2>Conferência dos dados</h2>${qualityList()}${UI.noSave?'<div class="q w"><span class="d"></span><span>O navegador não guardou os arquivos (espaço cheio ou bloqueado). Ao fechar a página será preciso carregá-los de novo.</span></div>':''}</section>
   <section class="panel"><h2>Ações</h2><div class="row"><button class="btn" data-a="sample">Carregar dados de exemplo</button>
@@ -555,7 +826,7 @@ function vIntegracoes(){
     <div class="banner"><span><b>Importante:</b> não conecte o endereço desta página HTML pelo conector <i>Web</i> do Power BI. Esse conector tenta adivinhar tabelas visuais e pode criar Column1, Column2. Baixe um CSV abaixo e importe pelo conector <b>Texto/CSV</b>.</span></div>
     <p>Os CSVs são arquivos de dados tabulares e incluem cabeçalhos próprios na primeira linha.</p>
     <h3>Resumos do painel</h3>
-    <div class="ds" style="margin:10px 0 18px">${POWERBI_SUMMARY_EXPORTS.map(([k,label,file,headers])=>`<div><div class="row sb"><b>${label}</b><button class="btn sm" data-a="export-csv" data-k="${k}" ${hasData()?'':'disabled'}>Baixar CSV</button></div><div class="small muted" style="margin-top:4px">Cabeçalhos: ${headers.join(', ')}</div></div>`).join('')}</div>
+    <div class="ds" style="margin:10px 0 18px">${POWERBI_SUMMARY_EXPORTS.map(([k,label,file,headers])=>`<div><div class="row sb"><b>${label}</b><button class="btn sm" data-a="export-csv" data-k="${k}" ${(k==='resumo-saving'?S.savings.length:hasData())?'':'disabled'}>Baixar CSV</button></div><div class="small muted" style="margin-top:4px">Cabeçalhos: ${headers.join(', ')}</div></div>`).join('')}</div>
     <div><div class="row sb"><b>Pedidos atrasados (tabela de atenção)</b><button class="btn sm" data-a="export-csv" data-k="resumo-atrasos" ${hasData()?'':'disabled'}>Baixar CSV · ${nf(M.peds.filter(p=>p.status==='atrasado').length)} linhas</button></div><div class="small muted" style="margin-top:4px">Cabeçalhos: NumeroPedido, Fornecedor, ValorEmAberto, AtrasoDias</div></div>
     <h3>Dados detalhados</h3>
     <div class="ds">${POWERBI_EXPORTS.map(([k,label,file,headers])=>`<div><div class="row sb"><b>${label}</b><button class="btn sm" data-a="export-csv" data-k="${k}" ${D[k].length?'':'disabled'}>Baixar CSV · ${nf(D[k].length)} linhas</button></div><div class="small muted" style="margin-top:4px">Cabeçalhos: ${headers.join(', ')}</div></div>`).join('')}</div>
@@ -568,16 +839,20 @@ function vIntegracoes(){
 const POWERBI_EXPORTS=[
  ['sc','Solicitações','PortalCompras_Solicitacoes.csv',['NumeroSolicitacao','Item','CodigoProduto','Descricao','Quantidade','DataSolicitacao','Solicitante','CentroCusto']],
  ['cot','Cotações','PortalCompras_Cotacoes.csv',['NumeroCotacao','NumeroSolicitacao','Fornecedor','CodigoProduto','PrecoUnitario','ValorTotal','DataCotacao','NumeroPedido']],
- ['ped','Pedidos','PortalCompras_Pedidos.csv',['NumeroPedido','Item','NumeroSolicitacao','NumeroCotacao','Fornecedor','CodigoProduto','Descricao','Quantidade','PrecoUnitario','ValorTotal','DataPedido','PrevisaoEntrega','QuantidadeEntregue','Comprador']],
- ['nf','Notas fiscais','PortalCompras_NotasFiscais.csv',['NumeroNotaFiscal','Serie','NumeroPedido','ItemPedido','Fornecedor','CodigoProduto','Quantidade','ValorTotal','DataEntrada']]
+ ['ped','Pedidos','PortalCompras_Pedidos.csv',['NumeroPedido','Item','NumeroSolicitacao','NumeroCotacao','Fornecedor','CodigoProduto','Descricao','Quantidade','PrecoUnitario','ValorTotal','ValorBruto','Impostos','ValorLiquido','DataPedido','PrevisaoEntrega','QuantidadeEntregue','Comprador','CondicaoPagamento']],
+ ['nf','Notas fiscais','PortalCompras_NotasFiscais.csv',['NumeroNotaFiscal','Serie','NumeroPedido','ItemPedido','Fornecedor','CodigoProduto','Quantidade','ValorTotal','DataEntrada']],
+ ['apr','Aprovações','PortalCompras_Aprovacoes.csv',['NumeroPedido','StatusAprovacao','DataAprovacao','Aprovador']],
+ ['fat','Faturamento','PortalCompras_Faturamento.csv',['NumeroDocumento','DataFaturamento','ValorFaturado']]
 ];
 const POWERBI_SUMMARY_EXPORTS=[
  ['resumo-fornecedores','Gasto por fornecedor','PortalCompras_Resumo_Fornecedores.csv',['Fornecedores','Gasto por fornecedor']],
- ['resumo-indicadores','Indicadores do painel','PortalCompras_Indicadores.csv',['Pedidos em aberto','Valor pedidos em aberto','Atrasados','Solicitações sem pedido','Entregas no prazo (%)','Prazo médio de entrega (dias)','Gasto em pedidos']]
+ ['resumo-indicadores','Indicadores do painel','PortalCompras_Indicadores.csv',['Pedidos em aberto','Valor pedidos em aberto','Atrasados','Solicitações sem pedido','Entregas no prazo (%)','Prazo médio de entrega (dias)','Gasto em pedidos']],
+ ['resumo-saving','Saving manual','PortalCompras_Saving.csv',['Data','NumeroPedido','Fornecedor','Categoria','Comprador','ValorReferencia','ValorFechado','Saving']],
+ ['resumo-abc','Curva ABC','PortalCompras_Curva_ABC.csv',['Tipo','Codigo','Descricao','Categoria','Gasto','PercentualAcumulado','ClasseABC']]
 ];
 function topSuppliers(){
   return M.forn.map(f=>({n:f.nome,v:f.peds.filter(inPeriod).reduce((a,p)=>a+p.total,0)}))
-    .filter(x=>x.v>0).sort((a,b)=>b.v-a.v).slice(0,8);
+    .filter(x=>x.v>0).sort((a,b)=>b.v-a.v).slice(0,10);
 }
 function dashboardIndicators(){
   const P=M.peds.filter(inPeriod);
@@ -613,8 +888,16 @@ function exportCsv(k){
   }
   const summary=POWERBI_SUMMARY_EXPORTS.find(([key])=>key===k);
   if(summary){
+    if(k==='resumo-saving'){
+      if(!S.savings.length){toast('Registre um saving antes de exportar.');return}
+      downloadCsv(summary[2],[summary[3],...S.savings.map(s=>[s.date,s.order,s.supplier,s.category,s.buyer,s.reference,s.final,s.reference-s.final])]);
+      return;
+    }
     if(!hasData()){toast('Carregue os pedidos antes de exportar os resumos do painel.');return}
-    const rows=k==='resumo-fornecedores'?topSuppliers().map(x=>[x.n,x.v]):[dashboardIndicators()];
+    const rows=k==='resumo-fornecedores'?topSuppliers().map(x=>[x.n,x.v]):k==='resumo-abc'?[
+      ...abcRows(M.forn.map(f=>({type:'Fornecedor',code:'',name:f.nome,category:'',spend:f.peds.filter(inPeriod).reduce((sum,p)=>sum+p.total,0)})).filter(x=>x.spend>0)).map(r=>[r.type,r.code,r.name,r.category,r.spend,r.cumulative*100,r.group]),
+      ...abcRows(productSpend().map(p=>({...p,type:'Produto',name:p.name})).filter(x=>x.spend>0)).map(r=>[r.type,r.code,r.name,r.category,r.spend,r.cumulative*100,r.group])
+    ]:[dashboardIndicators()];
     downloadCsv(summary[2],[summary[3],...rows]);
     return;
   }
@@ -623,8 +906,10 @@ function exportCsv(k){
   const rows=D[k].map(r=>{
     if(k==='sc')return [r.num,r.item,r.produto,r.desc,r.qtd,r.emissao,r.solicitante,r.cc];
     if(k==='cot')return [r.num,r.scNum,r.fornecedor,r.produto,r.preco,r.total,r.emissao,r.pedNum];
-    if(k==='ped')return [r.num,r.item,r.scNum,r.cotNum,r.fornecedor,r.produto,r.desc,r.qtd,r.preco,r.total,r.emissao,r.previsao,r.qtdEnt,r.comprador];
-    return [r.doc,r.serie,r.pedNum,r.item,r.fornecedor,r.produto,r.qtd,r.total,r.emissao];
+    if(k==='ped')return [r.num,r.item,r.scNum,r.cotNum,r.fornecedor,r.produto,r.desc,r.qtd,r.preco,r.total,r.gross,r.taxes,r.net,r.emissao,r.previsao,r.qtdEnt,r.comprador,r.payment];
+    if(k==='nf')return [r.doc,r.serie,r.pedNum,r.item,r.fornecedor,r.produto,r.qtd,r.total,r.emissao];
+    if(k==='apr')return [r.pedNum,r.status,r.approvalDate,r.approver];
+    return [r.doc,r.emissao,r.total];
   });
   downloadCsv(config[2],[config[3],...rows]);
 }
@@ -640,8 +925,8 @@ function downloadCsv(filename,rows){
   document.body.appendChild(link);link.click();link.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-const VIEWS={geral:vGeral,pedidos:vPedidos,fornecedores:vForn,dados:vDados,integracoes:vIntegracoes};
-const NAV=[['geral','Visão geral'],['pedidos','Acompanhamento'],['fornecedores','Fornecedores'],['dados','Dados'],['integracoes','API / Power BI']];
+const VIEWS={geral:vGeral,pedidos:vPedidos,fornecedores:vForn,estrategia:vEstrategia,graficos:vGraficos,dados:vDados,integracoes:vIntegracoes};
+const NAV=[['geral','Visão geral'],['pedidos','Acompanhamento'],['fornecedores','Fornecedores'],['estrategia','Estratégia'],['graficos','Gráficos'],['dados','Dados'],['integracoes','API / Power BI']];
 
 /* ================= detalhe do pedido ================= */
 function detail(num){
@@ -664,6 +949,8 @@ function detail(num){
     ${p.nfs.length?cs('','Recebimento',`${p.nfs.length} nota${p.nfs.length>1?'s':''}`,`${p.pct}% recebido · última ${fdate(p.lastNf)}`):cs('off','Recebimento',p.entregue>0?`${p.pct}% recebido`:'nada recebido','sem nota fiscal ligada')}
    </div>
    ${dur.length?`<p style="margin:0">${dur.join(' &nbsp;·&nbsp; ')}</p>`:''}
+   ${p.approvals.length?`<p class="small muted">Aprovação: ${esc(p.approvalStatus||'sem status')}${p.approver?' · '+esc(p.approver):''}${p.approvalDate?' · '+fdate(p.approvalDate):''}${p.approvalDays!=null?' · '+nf(p.approvalDays)+' dias':''}</p>`:''}
+   <p class="small muted">Valores: bruto ${brl(p.gross)} · impostos ${brl(p.taxes)} · líquido ${brl(p.net)}${p.payment?' · pagamento: '+esc(p.payment):''}</p>
    <h2>Itens do pedido</h2><div class="tw"><table><thead><tr><th>Item</th><th>Produto</th><th class="r">Qtd.</th><th class="r">Preço un.</th><th class="r">Total</th></tr></thead><tbody>${p.items.map(i=>`<tr><td class="mono">${esc(i.item||'—')}</td><td>${esc(i.desc||i.produto||'—')}<div class="small muted mono">${esc(i.produto)}</div></td><td class="r num">${nf(i.qtd,2)}</td><td class="r nw num">${brl(i.preco)}</td><td class="r nw num">${brl(i.total)}</td></tr>`).join('')}</tbody></table></div>
    ${cq.length?`<h2>Cotações comparadas</h2><div class="tw"><table><thead><tr><th>Fornecedor</th><th class="r">Total cotado</th><th></th></tr></thead><tbody>${cq.map((c,i)=>`<tr><td>${esc(c.f)}</td><td class="r nw num">${brl(c.t)}</td><td>${norm(c.f)===norm(p.fornecedor)?'<span class="pill p-entregue">escolhida</span>':''}${i===0?' <span class="small muted">menor preço</span>':''}</td></tr>`).join('')}</tbody></table></div>`:''}
    ${p.nfs.length?`<h2>Notas fiscais de entrada</h2><div class="tw"><table><thead><tr><th>Nota</th><th>Entrada</th><th class="r">Qtd.</th><th class="r">Valor</th></tr></thead><tbody>${p.nfs.map(n=>`<tr><td class="mono">${esc(dn('nf','doc',n.doc))}${n.serie?'/'+esc(n.serie):''}</td><td class="num">${fdate(n.emissao)}</td><td class="r num">${nf(n.qtd,2)}</td><td class="r nw num">${brl(n.total)}</td></tr>`).join('')}</tbody></table></div>`:''}
@@ -699,10 +986,42 @@ document.addEventListener('click',e=>{
     else integration.apiUrl='';
     if(persistIntegration()){render();toast('URL da API salva neste navegador. A conexão ainda não foi ativada.')}
    },
+   'save-category':()=>{
+    const product=$('#category-product').value,category=$('#category-name').value.trim();
+    if(!product||!category){toast('Selecione um produto e informe a categoria.');return}
+    S.categories[product]=category;persist();render();toast('Categoria do produto salva.');
+   },
+   'remove-category':()=>{
+    delete S.categories[el.dataset.code];persist();render();toast('Categoria removida.');
+   },
+   'save-targets':()=>{
+    const fields=[['otif','target-otif',0,100],['saving','target-saving',0,null],['approvalDays','target-approval',0,null]];
+    const next={...S.targets};
+    for(const [key,id,min,max] of fields){
+      const raw=$('#'+id).value.trim();
+      if(!raw){delete next[key];continue}
+      const value=Number(raw);
+      if(!Number.isFinite(value)||value<min||(max!=null&&value>max)){toast('Confira os valores das metas. OTIF deve estar entre 0 e 100; as demais metas não podem ser negativas.');return}
+      next[key]=value;
+    }
+    S.targets=next;persist();render();toast('Metas salvas.');
+   },
+   'save-saving':()=>{
+    const date=$('#saving-date').value,reference=Number($('#saving-reference').value),final=Number($('#saving-final').value);
+    if(!date||$('#saving-reference').value===''||$('#saving-final').value===''||!Number.isFinite(reference)||!Number.isFinite(final)||reference<0||final<0){
+      toast('Informe uma data e valores válidos para referência e preço fechado.');return;
+    }
+    S.savings=S.savings||[];
+    S.savings.push({id:`${Date.now()}-${S.savings.length}`,date,order:$('#saving-order').value.trim(),supplier:$('#saving-supplier').value.trim(),category:$('#saving-category').value.trim(),buyer:$('#saving-buyer').value.trim(),reference,final});
+    persist();render();toast('Saving registrado.');
+   },
+   'remove-saving':()=>{
+    S.savings=(S.savings||[]).filter(s=>s.id!==el.dataset.id);persist();render();toast('Registro de saving removido.');
+   },
    sample:()=>{loadSample();UI.view='geral';render();window.scrollTo(0,0)},
    clear:()=>{UI.confirm=true;render()},clearNo:()=>{UI.confirm=false;render()},
    'clear-no':()=>{UI.confirm=false;render()},
-   'clear-yes':()=>{S={raw:{},map:{},meta:{},sample:false};UI.confirm=false;persist();rebuild();render();toast('Dados apagados.')}
+   'clear-yes':()=>{S={raw:{},map:{},meta:{},categories:{},targets:{},savings:[],sample:false};UI.confirm=false;persist();rebuild();render();toast('Dados apagados.')}
   };
   if(A[a])A[a]();
 });
@@ -712,6 +1031,8 @@ document.addEventListener('change',e=>{
   const a=el.dataset&&el.dataset.a;
   if(a==='period'){UI.period=el.value;render()}
   else if(a==='sort'){UI.sort=el.value;$('#pt').innerHTML=pedTable()}
+  else if(a==='buyer-filter'){UI.buyer=el.value;$('#pt').innerHTML=pedTable()}
+  else if(a==='category-filter'){UI.category=el.value;$('#pt').innerHTML=pedTable()}
   else if(a==='map'){const k=el.dataset.k,f=el.dataset.f;S.map[k]=S.map[k]||{};if(el.value==='')delete S.map[k][f];else S.map[k][f]=+el.value;persist();rebuild();
     const open=[...document.querySelectorAll('details')].map(d=>d.open);render();document.querySelectorAll('details').forEach((d,i)=>d.open=!!open[i])}
 });
@@ -721,7 +1042,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#modal .ov'))clo
 /* ================= início ================= */
 const saved=restore();
 restoreIntegration();
-if(saved){S=saved;if(!S.map)S.map={};if(!S.meta)S.meta={};rebuild();if(!hasData()&&!Object.keys(S.raw).length)loadSample()}
+if(saved){S=saved;if(!S.raw)S.raw={};if(!S.map)S.map={};if(!S.meta)S.meta={};if(!S.categories)S.categories={};if(!S.targets)S.targets={};if(!S.savings)S.savings=[];rebuild();if(!hasData()&&!Object.keys(S.raw).length)loadSample()}
 else loadSample();
 render();
 })();
