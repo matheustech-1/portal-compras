@@ -200,15 +200,6 @@
         }
       });
 
-      try {
-        const session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
-        const accounts = readAccounts();
-        if (session && typeof session.email === 'string' && accounts[session.email.toLowerCase()]) {
-          location.replace('compras.html');
-        }
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'Não foi possível ler os dados de conta deste navegador.');
-      }
     })();
   </script>
 </body>
